@@ -26,5 +26,8 @@ pool-end = "192.168.1.200"
 router = "192.168.1.1"
 lease-time = 86400
 
+[misc]
+enable-ipv6 = false
+
 [files]
 pid-file = "/var/run/nimbusdns.pid"

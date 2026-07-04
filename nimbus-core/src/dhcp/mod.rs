@@ -110,6 +110,7 @@ pub async fn start(
             let _ = s2.set_reuse_address(true);
             let _ = s2.set_broadcast(true);
             let _ = s2.bind(&socket2::SockAddr::from(std_addr));
+            let _ = s2.set_nonblocking(true);
             info!("DHCP server listening on {} (SO_REUSEADDR)", bind_addr);
             Arc::new(tokio::net::UdpSocket::from_std(s2.into()).unwrap())
         }
