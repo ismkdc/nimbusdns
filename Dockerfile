@@ -7,24 +7,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .
-RUN cargo build --release --bin nimbusdns && \
-    strip target/release/nimbusdns && \
-    # Collect runtime .so files
-    mkdir /runtime && \
-    ldd target/release/nimbusdns | \
-    awk '/=> \// {print $3}' | sort -u | \
-    xargs -I{} cp -L --parents {} /runtime/ 2>/dev/null; \
-    for lib in libc.so.* libm.so.* libpthread.so.* libdl.so.* \
-               libresolv.so.* librt.so.* libssl.so.* libcrypto.so.* \
-               libsqlite3.so.*; do \
-      find /usr/lib /lib -name "$lib" -exec cp -L --parents {} /runtime/ \; 2>/dev/null; \
-    done; \
-    find /runtime -name "ld-linux*.so*" -o -name "ld-*.so*" | head -1 || \
-      cp -L /lib64/ld-linux-x86-64.so.2 /runtime/lib64/ 2>/dev/null; \
-    echo "Runtime libs collected"
+RUN cargo build --release --bin nimbusdns
+
+FROM debian:bookworm-slim AS libs
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libsqlite3-0 libssl3 ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
 FROM gcr.io/distroless/cc-debian12
-COPY --from=builder /runtime/ /
+COPY --from=libs /lib/x86_64-linux-gnu/libssl.so* /lib/x86_64-linux-gnu/
+COPY --from=libs /lib/x86_64-linux-gnu/libcrypto.so* /lib/x86_64-linux-gnu/
+COPY --from=libs /lib/x86_64-linux-gnu/libsqlite3.so* /lib/x86_64-linux-gnu/
+COPY --from=libs /usr/lib/x86_64-linux-gnu/libssl.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=libs /usr/lib/x86_64-linux-gnu/libcrypto.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=libs /usr/lib/x86_64-linux-gnu/libsqlite3.so* /usr/lib/x86_64-linux-gnu/
+COPY --from=libs /etc/ssl /etc/ssl
 COPY --from=builder /app/target/release/nimbusdns /usr/bin/nimbusdns
 COPY --from=builder /app/nimbus.toml /etc/nimbusdns/nimbus.toml
 
