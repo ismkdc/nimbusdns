@@ -56,7 +56,7 @@ impl QueryDb {
     pub fn store_query(&self, query: StoredQuery) -> Result<i64, DatabaseError> {
         self.conn.with_conn(|conn| {
             conn.execute(
-                "INSERT INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
+                "INSERT OR IGNORE INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
                  dbl_type, dbl_status, dbl_reply_time, dbl_reply_type, dbl_flags,
                  dbl_interface, dbl_elapsed_ms, dbl_adlist_id, dbl_cache_id,
                  dbl_regex_id, dbl_upstream_id)
@@ -92,7 +92,7 @@ impl QueryDb {
             let txn = conn.transaction()?;
             for query in queries {
                 txn.execute(
-                    "INSERT INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
+                    "INSERT OR IGNORE INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
                      dbl_type, dbl_status, dbl_reply_time, dbl_reply_type, dbl_flags,
                      dbl_interface, dbl_elapsed_ms, dbl_adlist_id, dbl_cache_id,
                      dbl_regex_id, dbl_upstream_id)
