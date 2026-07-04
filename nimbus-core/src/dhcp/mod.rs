@@ -119,17 +119,13 @@ pub async fn start(
         loop {
             tokio::select! {
                 result = socket.recv_from(&mut buf) => {
-                    match result {
-                        Ok((len, src)) => {
-                            info!("DHCP recv {} bytes from {}", len, src);
-                            let data = buf[..len].to_vec();
-                            let s = svr.clone();
-                            let sock = socket.clone();
-                            tokio::spawn(async move {
-                                handle_dhcp_packet(s, sock, data, src).await;
-                            });
-                        }
-                        Err(e) => warn!("DHCP recv_from error: {}", e),
+                    if let Ok((len, src)) = result {
+                        let data = buf[..len].to_vec();
+                        let s = svr.clone();
+                        let sock = socket.clone();
+                        tokio::spawn(async move {
+                            handle_dhcp_packet(s, sock, data, src).await;
+                        });
                     }
                 }
                 _ = check.tick() => {
@@ -170,11 +166,7 @@ async fn handle_dhcp_packet(
     mac.copy_from_slice(&chaddr[..6]);
 
     let msg_type = match msg.opts().get(dhcproto::v4::OptionCode::MessageType) {
-        Some(dhcproto::v4::DhcpOption::MessageType(mt)) => {
-            info!("DHCP msg_type={:?} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                mt, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-            *mt
-        }
+        Some(dhcproto::v4::DhcpOption::MessageType(mt)) => *mt,
         _ => {
             warn!("DHCP message missing MessageType option");
             return;
@@ -194,7 +186,7 @@ async fn handle_dhcp_packet(
                             if let Err(e) = socket.send_to(&bytes, dest).await {
                                 warn!("DHCP OFFER send error: {}", e);
                             } else {
-                                info!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                                debug!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                                     ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
                             }
                         }
