@@ -165,7 +165,11 @@ async fn handle_dhcp_packet(
     };
 
     let msg_type = match msg.opts().get(dhcproto::v4::OptionCode::MessageType) {
-        Some(dhcproto::v4::DhcpOption::MessageType(mt)) => *mt,
+        Some(dhcproto::v4::DhcpOption::MessageType(mt)) => {
+            info!("DHCP msg_type={:?} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                mt, chaddr[0], chaddr[1], chaddr[2], chaddr[3], chaddr[4], chaddr[5]);
+            *mt
+        }
         _ => {
             warn!("DHCP message missing MessageType option");
             return;
