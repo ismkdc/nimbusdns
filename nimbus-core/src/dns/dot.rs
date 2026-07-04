@@ -228,8 +228,8 @@ async fn tls_connection_task(
                             }
                         }
                         Err(e) => {
-                            // Connection closed or error - reconnect
-                            error!("DoT read failed for {}: {}", address, e);
+                            // Connection closed or error - reconnect immediately
+                            debug!("DoT reconnect for {}: {}", address, e);
                             // Fail all pending queries
                             for (_id, tx) in pending.drain() {
                                 let _ = tx.send(Err(DotError::ConnectionClosed));

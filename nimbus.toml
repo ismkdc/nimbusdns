@@ -1,5 +1,8 @@
 [dns]
-upstreams = [{Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}}]
+upstreams = [
+  {Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}},
+  {Tls = {address = "1.1.1.1", port = 853, hostname = "cloudflare-dns.com"}},
+]
 bind = "0.0.0.0:53"
 blocking-mode = "NULL"
 query-log = true
@@ -21,7 +24,6 @@ enabled = true
 pool-start = "192.168.1.100"
 pool-end = "192.168.1.200"
 router = "192.168.1.1"
-dns-server = "8.8.8.8"
 lease-time = 86400
 
 [files]
