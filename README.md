@@ -11,6 +11,10 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 - **Query Log** - Searchable query history with overTime stats
 - **Performance** - Rust, LRU cache, batch DB writes, EDNS0, graceful shutdown
 
+## Screenshots
+
+![Dashboard](ss1.jpg) | ![Settings & DHCP](ss2.jpg)
+
 ## Quick Start
 
 ### Docker
