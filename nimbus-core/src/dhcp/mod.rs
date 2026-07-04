@@ -198,10 +198,15 @@ async fn handle_dhcp_packet(
             }
         }
         MessageType::Request => {
+            // SELECTING (initial): client provides RequestedIpAddress option
+            // RENEWING/REBINDING: client sets ciaddr, no RequestedIpAddress
             let requested_ip = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
                 .and_then(|o| match o {
                     dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
                     _ => None,
+                }).or_else(|| {
+                    let ciaddr = msg.ciaddr();
+                    if ciaddr != Ipv4Addr::UNSPECIFIED { Some(ciaddr) } else { None }
                 });
 
             if let Some(ip) = requested_ip {
@@ -221,9 +226,16 @@ async fn handle_dhcp_packet(
 
                 let response = build_ack(&msg, ip, &server);
                 if let Ok(bytes) = encode_message(&response) {
-                    let dest = std::net::SocketAddr::V4(
-                        SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
-                    );
+                    // Renewal ACK goes to ciaddr (unicast), initial ACK is broadcast
+                    let dest = if msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
+                        std::net::SocketAddr::V4(
+                            SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
+                        )
+                    } else {
+                        std::net::SocketAddr::V4(
+                            SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
+                        )
+                    };
                     let _ = socket.send_to(&bytes, dest).await;
                     info!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                         ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
