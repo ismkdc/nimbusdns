@@ -32,15 +32,7 @@ jobs:
             suffix: macos-x64
             ext: tar.gz
 
-          # Windows (disabled - needs cross-platform fixes for nix/libc/signal-hook-tokio)
-          # - os: windows-2025
-          #   target: x86_64-pc-windows-msvc
-          #   suffix: windows-x64
-          #   ext: zip
-          # - os: windows-2025
-          #   target: aarch64-pc-windows-msvc
-          #   suffix: windows-arm64
-          #   ext: zip
+
 
           # Linux
           - os: ubuntu-24.04
@@ -85,14 +77,7 @@ jobs:
           cd dist
           tar czf ../nimbusdns-${{ matrix.suffix }}.tar.gz nimbusdns nimbus.toml
 
-      - name: Package (zip)
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          mkdir dist -Force
-          Copy-Item "target/${{ matrix.target }}/release/nimbusdns.exe" dist/
-          Copy-Item nimbus.toml dist/
-          Compress-Archive -Path dist/* -DestinationPath "nimbusdns-${{ matrix.suffix }}.zip"
+
 
       - name: Upload artifact
         uses: actions/upload-artifact@v7
@@ -203,8 +188,7 @@ jobs:
             case "$dir" in
               *macos-arm64*) platform="🍎 macOS Apple Silicon" ;;
               *macos-x64*)   platform="🍎 macOS Intel" ;;
-              *windows-arm64*) platform="🪟 Windows ARM64" ;;
-              *windows-x64*)   platform="🪟 Windows x64" ;;
+
               *linux-arm64*)   platform="🐧 Linux ARM64" ;;
               *linux-x64*)     platform="🐧 Linux x64" ;;
               *)              platform="📦 Other" ;;
