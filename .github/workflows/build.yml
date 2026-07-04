@@ -110,7 +110,7 @@ jobs:
         include:
           - runner: ubuntu-24.04
             platform: linux/amd64
-            tag_suffix: ""
+            tag_suffix: "-amd64"
           - runner: ubuntu-24.04-arm
             platform: linux/arm64
             tag_suffix: "-arm64"
@@ -167,9 +167,9 @@ jobs:
       - name: Create multi-arch manifest
         run: |
           docker buildx imagetools create \
-            -t ismkdc/nimbusdns:latest \
-            ismkdc/nimbusdns:latest \
-            ismkdc/nimbusdns:latest-arm64
+            --tag ismkdc/nimbusdns:latest \
+            docker.io/ismkdc/nimbusdns:latest \
+            docker.io/ismkdc/nimbusdns:latest-arm64
 
   # -- Create GitHub Release --------------------------------------------
   release:
