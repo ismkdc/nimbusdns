@@ -100,12 +100,21 @@ pub async fn start(
     });
 
     let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT);
-    let socket = match UdpSocket::bind(bind_addr).await {
-        Ok(s) => { info!("DHCP server listening on {}", bind_addr); s }
+    let std_addr = std::net::SocketAddr::V4(bind_addr);
+    let socket = match socket2::Socket::new(
+        socket2::Domain::for_address(std_addr),
+        socket2::Type::DGRAM,
+        Some(socket2::Protocol::UDP),
+    ) {
+        Ok(s2) => {
+            let _ = s2.set_reuse_address(true);
+            let _ = s2.set_broadcast(true);
+            let _ = s2.bind(&socket2::SockAddr::from(std_addr));
+            info!("DHCP server listening on {} (SO_REUSEADDR)", bind_addr);
+            Arc::new(tokio::net::UdpSocket::from_std(s2.into()).unwrap())
+        }
         Err(e) => { warn!("Cannot bind DHCP port {}: {}", SERVER_PORT, e); return None; }
     };
-    let socket = Arc::new(socket);
-    let _ = socket.set_broadcast(true);
 
     let mut buf = vec![0u8; 1024];
     let mut shutdown = shutdown_rx;

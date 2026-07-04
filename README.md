@@ -4,7 +4,7 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 
 ## Features
 
-- **DNS-over-TLS (DoT)** - Encrypted upstream DNS to Cloudflare, Google, Quad9, OpenDNS, Mullvad
+- **DNS-over-TLS (DoT)** - Encrypted upstream DNS to Google, Cloudflare, Quad9, OpenDNS, Mullvad
 - **Ad Blocking** - StevenBlack hosts blocklist with auto-refresh
 - **Web Panel** - Dark theme, responsive, setup wizard, session auth + optional TOTP
 - **DHCP Server** - Built-in DHCP with IP pool management
@@ -19,7 +19,7 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 docker pull ismkdc/nimbusdns:latest
 
 docker run -d --name nimbusdns --restart unless-stopped --network host \
-  -v /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro \
+  -v /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml \
   -v nimbusdns-data:/var/lib/nimbusdns \
   --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE \
   ismkdc/nimbusdns:latest
@@ -40,7 +40,7 @@ services:
       - NET_ADMIN
       - NET_BIND_SERVICE
     volumes:
-      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro
+      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml
       - nimbusdns-data:/var/lib/nimbusdns
 
 volumes:
@@ -53,25 +53,24 @@ Save as `docker-compose.yml` and run:
 docker compose up -d
 ```
 
+Open http://localhost:8181 to access the web panel.
+
 ## Configuration
 
-The same configuration file format works on all platforms. Place `nimbus.toml` next to the binary or at:
-
-- **Linux/macOS:** `/etc/nimbusdns/nimbus.toml`
-- **macOS (homebrew):** `$(brew --prefix)/etc/nimbusdns/nimbus.toml`
-- **Windows:** `%PROGRAMDATA%\nimbusdns\nimbus.toml`
-
-Example `nimbus.toml`:
+Place `nimbus.toml` at `/etc/nimbusdns/nimbus.toml`:
 
 ```toml
 [dns]
-upstreams = [{Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}}]
+upstreams = [
+  {Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}},
+  {Tls = {address = "8.8.4.4", port = 853, hostname = "dns.google"}},
+]
 bind = "0.0.0.0:53"
 blocking-mode = "NULL"
 query-log = true
 
 [webserver]
-ports = ["80o"]
+ports = ["8181o"]
 
 [dhcp]
 enabled = true
@@ -84,8 +83,6 @@ lease-time = 86400
 source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 refresh-interval = 86400
 ```
-
-Or configure everything via environment variables (see Docker Compose example above).
 
 ## Build from Source
 
