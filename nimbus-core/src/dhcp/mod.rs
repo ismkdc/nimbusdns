@@ -119,13 +119,17 @@ pub async fn start(
         loop {
             tokio::select! {
                 result = socket.recv_from(&mut buf) => {
-                    if let Ok((len, src)) = result {
-                        let data = buf[..len].to_vec();
-                        let s = svr.clone();
-                        let sock = socket.clone();
-                        tokio::spawn(async move {
-                            handle_dhcp_packet(s, sock, data, src).await;
-                        });
+                    match result {
+                        Ok((len, src)) => {
+                            info!("DHCP recv {} bytes from {}", len, src);
+                            let data = buf[..len].to_vec();
+                            let s = svr.clone();
+                            let sock = socket.clone();
+                            tokio::spawn(async move {
+                                handle_dhcp_packet(s, sock, data, src).await;
+                            });
+                        }
+                        Err(e) => warn!("DHCP recv_from error: {}", e),
                     }
                 }
                 _ = check.tick() => {
