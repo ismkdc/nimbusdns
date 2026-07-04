@@ -719,6 +719,9 @@ impl Config {
                     ConfigError::Validation(format!("Invalid bind address: {}", value))
                 })?;
             }
+            ["dns", "query", "log"] | ["dns", "queryLog"] => {
+                self.dns.query_log = value == "true" || value == "1";
+            }
             ["dns", "blocking", "ip"] | ["dns", "blockingIp"] => {
                 self.dns.blocking_ip = value.parse().map_err(|_| {
                     ConfigError::Validation(format!("Invalid blocking IP: {}", value))
@@ -747,6 +750,12 @@ impl Config {
             }
             ["dhcp", "domain"] => {
                 self.dhcp.domain = Some(value.to_string());
+            }
+            ["blocking", "source", "url"] | ["blocking", "sourceUrl"] => {
+                self.blocking.source_url = value.to_string();
+            }
+            ["blocking", "refresh", "interval"] | ["blocking", "refreshInterval"] => {
+                if let Ok(v) = value.parse() { self.blocking.refresh_interval = v; }
             }
             ["debug", flag] => {
                 match *flag {
