@@ -5,13 +5,14 @@
 use std::fs;
 use std::path::Path;
 
-use std::os::unix::io::AsRawFd;
+#[cfg(unix)]
 use libc::{setpriority, PRIO_PROCESS};
 use tracing::{info, warn, debug};
 
 /// Daemonize BEFORE entering tokio runtime.
 /// Double-fork: parent exits, grandchild continues as daemon.
-/// This is safe because no threads exist yet.
+/// Only available on Unix.
+#[cfg(unix)]
 pub fn daemonize_early() -> anyhow::Result<()> {
     info!("Daemonizing (early fork)...");
 
@@ -49,7 +50,7 @@ pub fn daemonize_early() -> anyhow::Result<()> {
 
     // Redirect stdin/stdout/stderr to /dev/null
     if let Ok(null) = std::fs::File::open("/dev/null") {
-        
+        use std::os::fd::AsRawFd;
         let _ = unsafe { libc::dup2(null.as_raw_fd(), libc::STDIN_FILENO) };
         let _ = unsafe { libc::dup2(null.as_raw_fd(), libc::STDOUT_FILENO) };
         let _ = unsafe { libc::dup2(null.as_raw_fd(), libc::STDERR_FILENO) };
@@ -59,7 +60,15 @@ pub fn daemonize_early() -> anyhow::Result<()> {
     Ok(())
 }
 
+/// Windows stub for daemonize_early (no-op, always runs in foreground)
+#[cfg(not(unix))]
+pub fn daemonize_early() -> anyhow::Result<()> {
+    info!("Running in foreground (daemonize not supported on this platform)");
+    Ok(())
+}
+
 /// Set the process nice value
+#[cfg(unix)]
 pub fn set_nice(nice_value: i32) -> anyhow::Result<()> {
     if nice_value == -999 {
         debug!("Not changing process priority (nice == -999)");
@@ -87,6 +96,12 @@ pub fn set_nice(nice_value: i32) -> anyhow::Result<()> {
     }
 }
 
+#[cfg(not(unix))]
+pub fn set_nice(_nice_value: i32) -> anyhow::Result<()> {
+    debug!("Process priority not supported on this platform");
+    Ok(())
+}
+
 /// Save PID to file
 pub fn save_pid(path: &Path) -> anyhow::Result<()> {
     let pid = std::process::id();
@@ -109,6 +124,7 @@ pub fn remove_pid(path: &Path) {
 }
 
 /// Check if another instance is running
+#[cfg(unix)]
 pub fn check_other_instance(pid_path: &Path) -> bool {
     if !pid_path.exists() {
         return false;
@@ -129,4 +145,9 @@ pub fn check_other_instance(pid_path: &Path) -> bool {
         }
         _ => false,
     }
+}
+
+#[cfg(not(unix))]
+pub fn check_other_instance(_pid_path: &Path) -> bool {
+    false
 }

@@ -171,6 +171,15 @@ jobs:
             docker.io/ismkdc/nimbusdns:latest \
             docker.io/ismkdc/nimbusdns:latest-arm64
 
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+          repository: ismkdc/nimbusdns
+          short-description: "Rust DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth"
+          readme-filepath: ./README.md
+
   # -- Create GitHub Release --------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
