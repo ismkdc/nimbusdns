@@ -27,8 +27,6 @@ docker run -d --name nimbusdns --restart unless-stopped --network host \
 
 ### Docker Compose
 
-Create `nimbus.toml` on the host and mount it:
-
 ```yaml
 services:
   nimbusdns:
@@ -82,6 +80,9 @@ lease-time = 86400
 [blocking]
 source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 refresh-interval = 86400
+
+[misc]
+enable-ipv6 = false
 ```
 
 ## Build from Source
