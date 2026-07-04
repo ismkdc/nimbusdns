@@ -186,7 +186,7 @@ async fn handle_dhcp_packet(
                             if let Err(e) = socket.send_to(&bytes, dest).await {
                                 warn!("DHCP OFFER send error: {}", e);
                             } else {
-                                debug!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                                info!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                                     ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
                             }
                         }
@@ -225,7 +225,7 @@ async fn handle_dhcp_packet(
                         SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
                     );
                     let _ = socket.send_to(&bytes, dest).await;
-                    debug!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                    info!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                         ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
                 }
             }
