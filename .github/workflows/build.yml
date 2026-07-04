@@ -32,15 +32,15 @@ jobs:
             suffix: macos-x64
             ext: tar.gz
 
-          # Windows
-          - os: windows-2025
-            target: x86_64-pc-windows-msvc
-            suffix: windows-x64
-            ext: zip
-          - os: windows-2025
-            target: aarch64-pc-windows-msvc
-            suffix: windows-arm64
-            ext: zip
+          # Windows (disabled - needs cross-platform fixes for nix/libc/signal-hook-tokio)
+          # - os: windows-2025
+          #   target: x86_64-pc-windows-msvc
+          #   suffix: windows-x64
+          #   ext: zip
+          # - os: windows-2025
+          #   target: aarch64-pc-windows-msvc
+          #   suffix: windows-arm64
+          #   ext: zip
 
           # Linux
           - os: ubuntu-24.04
