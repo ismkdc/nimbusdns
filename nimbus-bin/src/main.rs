@@ -1,5 +1,5 @@
 // =============================================================================
-// NimbusDNS Rust Port — Binary Entry Point
+// NimbusDNS Rust Port - Binary Entry Point
 // =============================================================================
 // Daemonization (fork) happens BEFORE tokio runtime starts.
 // This ensures the child process has a clean runtime state.
@@ -26,7 +26,7 @@ struct Args {
     test_config: bool,
 }
 
-// ── Sync entry point: fork first, then enter async runtime ──────────────
+// -- Sync entry point: fork first, then enter async runtime --------------
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
@@ -57,7 +57,7 @@ fn main() -> anyhow::Result<()> {
     runtime.block_on(async_main(args, cfg))
 }
 
-// ── Async entry point (runs after fork in child process) ───────────────
+// -- Async entry point (runs after fork in child process) ---------------
 async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
     // Check for another nimbusdns instance
     if cfg.misc.check_other_instance {

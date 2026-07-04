@@ -43,7 +43,7 @@ pub async fn start(
          dns.upstreams.iter().filter(|u| matches!(u, DnsUpstream::Tls { .. })).count(),
          blocking)
     };
-    // config_guard dropped here — before async work
+    // config_guard dropped here - before async work
 
     // Initialize DNS cache (after releasing config lock)
     let cache = Arc::new(DnsCache::new(cache_entries));

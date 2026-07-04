@@ -69,7 +69,7 @@ pub async fn serve(
         )),
     });
 
-    // ── Build router ─────────────────────────────────────────────────────
+    // -- Build router -----------------------------------------------------
     let app = Router::new()
         // Web panel (public, embedded SPA)
         .route("/", get(web_root))
@@ -158,7 +158,7 @@ pub async fn serve(
         .layer(tower_http::cors::CorsLayer::permissive())
         .with_state(internal_state);
 
-    // Bind and serve — use configured port, listen on all interfaces
+    // Bind and serve - use configured port, listen on all interfaces
     let bind_port = state.config.read().webserver.http_port();
     let addr = SocketAddr::from(([0, 0, 0, 0], bind_port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
@@ -180,7 +180,7 @@ pub async fn serve(
             .ok();
     });
 
-    // ── Background session cleanup + query retention ────────────────────
+    // -- Background session cleanup + query retention --------------------
     tokio::spawn(async move {
         let mut interval = tokio::time::interval(tokio::time::Duration::from_secs(3600)); // hourly
         let mut rx = cleanup_shutdown;
@@ -431,7 +431,7 @@ async fn get_recent_blocked(State(state): State<Arc<InternalState>>) -> Result<(
     }
 }
 
-/// POST /api/dns/benchmark — measure TCP latency to a DNS server
+/// POST /api/dns/benchmark - measure TCP latency to a DNS server
 async fn post_dns_benchmark(
     Json(body): Json<serde_json::Value>,
 ) -> (StatusCode, Json<serde_json::Value>) {
@@ -684,7 +684,7 @@ async fn get_info(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<
     }))
 }
 
-/// GET /api/info/system — container resource usage (CPU/RAM via cgroup)
+/// GET /api/info/system - container resource usage (CPU/RAM via cgroup)
 async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
     // Container memory: cgroup v2 first, then v1
     let mem_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.current").ok()
@@ -728,7 +728,7 @@ async fn get_health(State(state): State<Arc<InternalState>>) -> (StatusCode, Jso
     })
 }
 
-/// POST /api/auth/setup — set initial password (first-time setup)
+/// POST /api/auth/setup - set initial password (first-time setup)
 async fn setup_password(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<auth::AuthRequest>,
@@ -819,7 +819,7 @@ async fn delete_session(
     Ok(api_ok(serde_json::json!({"status": "logged_out"})))
 }
 
-/// GET /api/auth/totp — return TOTP status
+/// GET /api/auth/totp - return TOTP status
 async fn get_totp_status(
     State(state): State<Arc<InternalState>>,
 ) -> (StatusCode, Json<serde_json::Value>) {
@@ -830,7 +830,7 @@ async fn get_totp_status(
     }))
 }
 
-/// POST /api/auth/totp — setup or verify TOTP
+/// POST /api/auth/totp - setup or verify TOTP
 async fn setup_totp(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<serde_json::Value>,
@@ -901,7 +901,7 @@ async fn get_config(State(state): State<Arc<InternalState>>) -> (StatusCode, Jso
     api_ok(json)
 }
 
-/// PATCH /api/config — partial update via JSON deep-merge
+/// PATCH /api/config - partial update via JSON deep-merge
 async fn update_config(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<serde_json::Value>,
@@ -936,7 +936,7 @@ async fn update_config(
     Ok(api_ok(serde_json::json!({"status": "updated"})))
 }
 
-/// GET /api/config/{element} — return a single config section
+/// GET /api/config/{element} - return a single config section
 async fn get_config_element(
     State(state): State<Arc<InternalState>>,
     Path(element): Path<String>,
@@ -952,7 +952,7 @@ async fn get_config_element(
     }
 }
 
-/// GET /api/config/_properties — return metadata about config sections
+/// GET /api/config/_properties - return metadata about config sections
 async fn get_config_properties() -> (StatusCode, Json<serde_json::Value>) {
     // Return the list of available config sections (with descriptions)
     let properties = serde_json::json!([
@@ -970,7 +970,7 @@ async fn get_config_properties() -> (StatusCode, Json<serde_json::Value>) {
 // Remaining Endpoints
 // =============================================================================
 
-/// POST /api/blocking — enable/disable/toggle blocking
+/// POST /api/blocking - enable/disable/toggle blocking
 async fn set_blocking_status(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<serde_json::Value>,
@@ -994,7 +994,7 @@ async fn set_blocking_status(
     Ok(api_ok(serde_json::json!({"status": "updated", "blocking": mode_str})))
 }
 
-/// GET /api/dhcp — DHCP status
+/// GET /api/dhcp - DHCP status
 async fn get_dhcp_status(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
     let cfg = state.app_state.config.read();
     let enabled = cfg.dhcp.enabled;
@@ -1003,7 +1003,7 @@ async fn get_dhcp_status(State(state): State<Arc<InternalState>>) -> (StatusCode
     api_ok(serde_json::json!({"enabled": enabled, "range": format!("{} - {}", start, end)}))
 }
 
-/// GET /api/dhcp/leases — DHCP lease list
+/// GET /api/dhcp/leases - DHCP lease list
 async fn get_dhcp_leases(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match &state.app_state.dhcp_server {
         Some(server) => {
@@ -1014,12 +1014,12 @@ async fn get_dhcp_leases(State(state): State<Arc<InternalState>>) -> Result<(Sta
     }
 }
 
-/// GET /api/logs — list available log types
+/// GET /api/logs - list available log types
 async fn get_logs() -> (StatusCode, Json<serde_json::Value>) {
     api_ok(serde_json::json!(["nimbusdns", "access"]))
 }
 
-/// GET /api/blocklist — blocklist status info
+/// GET /api/blocklist - blocklist status info
 async fn get_blocklist_status(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     let count = state.app_state.database.gravity.total_blocked()
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
@@ -1029,7 +1029,7 @@ async fn get_blocklist_status(State(state): State<Arc<InternalState>>) -> Result
     })))
 }
 
-/// POST /api/blocklist/refresh — trigger blocklist refresh
+/// POST /api/blocklist/refresh - trigger blocklist refresh
 async fn post_blocklist_refresh(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     let gravity = state.app_state.database.gravity.clone();
     let url = state.app_state.config.read().blocking.source_url.clone();
@@ -1041,7 +1041,7 @@ async fn post_blocklist_refresh(State(state): State<Arc<InternalState>>) -> Resu
     Ok(api_ok(serde_json::json!({"status": "refresh_started"})))
 }
 
-/// POST /api/blocklist — add a custom domain to the blocklist
+/// POST /api/blocklist - add a custom domain to the blocklist
 async fn post_blocklist_add(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<serde_json::Value>,
@@ -1055,7 +1055,7 @@ async fn post_blocklist_add(
     Ok(api_ok(serde_json::json!({"status": "added", "domain": domain})))
 }
 
-/// DELETE /api/blocklist/{domain} — remove a domain from the blocklist
+/// DELETE /api/blocklist/{domain} - remove a domain from the blocklist
 async fn delete_blocklist_entry(
     State(state): State<Arc<InternalState>>,
     Path(domain): Path<String>,
@@ -1065,7 +1065,7 @@ async fn delete_blocklist_entry(
     Ok(api_ok(serde_json::json!({"status": "removed", "domain": domain})))
 }
 
-/// GET /api/blocklist/entries — get all blocklist entries (paginated)
+/// GET /api/blocklist/entries - get all blocklist entries (paginated)
 async fn get_blocklist_entries(
     State(state): State<Arc<InternalState>>,
     Query(params): Query<QueriesParams>,
@@ -1083,7 +1083,7 @@ async fn get_blocklist_entries(
     }
 }
 
-/// GET /api/endpoints — list all available API endpoints
+/// GET /api/endpoints - list all available API endpoints
 async fn get_endpoints() -> (StatusCode, Json<serde_json::Value>) {
     let endpoints = vec![
         "/api/auth", "/api/auth/session", "/api/auth/totp",

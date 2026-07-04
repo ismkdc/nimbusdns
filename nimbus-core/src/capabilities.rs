@@ -1,5 +1,5 @@
 // =============================================================================
-// Capabilities Check — stub (CAP_* constants not available in libc crate)
+// Capabilities Check - stub (CAP_* constants not available in libc crate)
 // =============================================================================
 
 /// Check if the process has a specific capability (always returns true).

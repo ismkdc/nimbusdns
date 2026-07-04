@@ -390,7 +390,7 @@ async function ensureAuth() {
     if (!info.password_set) {
       document.getElementById('wizard').classList.add('show');
     } else {
-      // Password is set but no session — show login prompt
+      // Password is set but no session - show login prompt
       const pw = prompt('Enter admin password:');
       if (pw !== null) {
         const res = await fetch(API + '/api/auth', {

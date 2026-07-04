@@ -1,5 +1,5 @@
 // =============================================================================
-// overTime — In-Memory Time-Based Query Statistics
+// overTime - In-Memory Time-Based Query Statistics
 // =============================================================================
 // Ported from original C (src/overTime.c, ~252 lines)
 //

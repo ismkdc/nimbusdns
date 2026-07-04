@@ -1,5 +1,5 @@
 // =============================================================================
-// DNS Forwarder — per-query ephemeral sockets to avoid race conditions
+// DNS Forwarder - per-query ephemeral sockets to avoid race conditions
 // =============================================================================
 
 use std::net::SocketAddr;
@@ -15,7 +15,7 @@ use crate::config::DnsUpstream;
 
 const MAX_DNS_SIZE: usize = 4096;
 
-/// DNS forwarder — opens ephemeral UDP socket per query to avoid ID collisions
+/// DNS forwarder - opens ephemeral UDP socket per query to avoid ID collisions
 pub struct DnsForwarder {
     dot_manager: Arc<super::dot::DotManager>,
     upstreams: Vec<DnsUpstream>,
@@ -49,7 +49,7 @@ impl DnsForwarder {
         }
     }
 
-    /// Each query gets its own ephemeral UDP socket — eliminates ID collision race
+    /// Each query gets its own ephemeral UDP socket - eliminates ID collision race
     async fn forward_plain(
         &self,
         query_bytes: &[u8],
@@ -58,7 +58,7 @@ impl DnsForwarder {
         timeout_duration: Duration,
     ) -> Result<Message, ForwardError> {
         let remote = SocketAddr::new(address, port);
-        // Bind ephemeral socket — OS assigns random port
+        // Bind ephemeral socket - OS assigns random port
         let socket = UdpSocket::bind("0.0.0.0:0").await
             .map_err(ForwardError::Io)?;
 

@@ -82,7 +82,7 @@ impl QueryRouter {
             return make_error_response(id, ResponseCode::Refused);
         }
 
-        // 2. Blocking check — in-memory (no SQLite per query)
+        // 2. Blocking check - in-memory (no SQLite per query)
         if self.blocking.is_blocked(&domain) {
             debug!("Blocked: {}", domain);
             let blocking_ip = self.state.config.read().dns.blocking_ip;
@@ -267,7 +267,7 @@ fn make_blocked_response(id: u16, query: &Message, mode: BlockingMode, qtype: Re
                                 ));
                             }
                             std::net::IpAddr::V6(_) => {
-                                // IPv6 blocking IP for A query — use NULL
+                                // IPv6 blocking IP for A query - use NULL
                                 response.add_answer(make_a_record(name.clone()));
                             }
                         }
@@ -284,7 +284,7 @@ fn make_blocked_response(id: u16, query: &Message, mode: BlockingMode, qtype: Re
                                 ));
                             }
                             std::net::IpAddr::V4(_) => {
-                                // IPv4 blocking IP for AAAA query — use NULL
+                                // IPv4 blocking IP for AAAA query - use NULL
                                 response.add_answer(make_aaaa_record(name.clone()));
                             }
                         }
@@ -357,7 +357,7 @@ use dashmap::DashMap;
 struct RateLimiter {
     max_qps: u32,
     clients: DashMap<std::net::IpAddr, (u32, Instant)>,
-    /// Last cleanup time — stale entries removed periodically
+    /// Last cleanup time - stale entries removed periodically
     last_cleanup: parking_lot::Mutex<Instant>,
 }
 

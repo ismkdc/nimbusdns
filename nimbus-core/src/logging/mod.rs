@@ -51,11 +51,11 @@ pub fn init() -> anyhow::Result<()> {
 
 /// Print the startup banner
 fn log_startup_banner() {
-    tracing::info!("──────────────────────────────────────────────────");
+    tracing::info!("--------------------------------------------------");
     tracing::info!("NimbusDNS Rust Port");
     tracing::info!("  NimbusDNS DNS engine with native DNS-over-TLS");
     tracing::info!("  Version: {}", env!("CARGO_PKG_VERSION"));
-    tracing::info!("──────────────────────────────────────────────────");
+    tracing::info!("--------------------------------------------------");
 }
 
 /// Log levels that map to original log level semantics

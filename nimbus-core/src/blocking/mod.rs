@@ -1,5 +1,5 @@
 // =============================================================================
-// NimbusDNS Blocking Engine — In-Memory
+// NimbusDNS Blocking Engine - In-Memory
 // =============================================================================
 // All blocking data is loaded into RAM at startup (and refreshed on SIGHUP/API).
 // This eliminates per-query SQLite queries and regex recompilation.
@@ -90,7 +90,7 @@ impl BlockingLists {
             for domain in domains {
                 let trimmed = domain.trim();
                 if trimmed.starts_with("*.") || trimmed.starts_with('*') {
-                    // Wildcard — compile as regex
+                    // Wildcard - compile as regex
                     if let Some(re) = Self::compile_regex(trimmed) {
                         denylist_regex.push(re);
                         wildcard_count += 1;
@@ -136,7 +136,7 @@ impl BlockingLists {
         let is_raw_regex = body.starts_with('/') && body.len() > 1 && body.ends_with('/');
 
         let pattern_str = if is_raw_regex {
-            // Raw regex — strip / delimiters, add (?i) for case-insensitive
+            // Raw regex - strip / delimiters, add (?i) for case-insensitive
             let inner = body.strip_prefix('/').and_then(|s| s.strip_suffix('/')).unwrap_or(body);
             if inner.is_empty() {
                 return None;
@@ -151,7 +151,7 @@ impl BlockingLists {
             let suffix = regex::escape(suffix);
             format!("(?i)(^|\\.){}$", suffix)
         } else {
-            // Plain literal domain — exact match, case-insensitive
+            // Plain literal domain - exact match, case-insensitive
             format!("(?i)^{}$", regex::escape(body))
         };
 
@@ -224,7 +224,7 @@ impl BlockingDecision {
     }
 }
 
-/// Blocking engine — manages all blocking/filtering state
+/// Blocking engine - manages all blocking/filtering state
 pub struct BlockingEngine {
     lists: Arc<RwLock<BlockingLists>>,
     mode: BlockingMode,
@@ -256,7 +256,7 @@ impl BlockingEngine {
         self.mode = mode;
     }
 
-    /// Check if a domain should be blocked — O(1) for exact, O(n) for regex
+    /// Check if a domain should be blocked - O(1) for exact, O(n) for regex
     pub fn is_blocked(&self, domain: &str) -> bool {
         self.lists.read().check_blocked(domain).is_blocked()
     }

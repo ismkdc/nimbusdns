@@ -3,7 +3,7 @@
 // =============================================================================
 // Shared types and modules used by all crates.
 
-// Unsafe is needed only for fork() in daemon module — contained there.
+// Unsafe is needed only for fork() in daemon module - contained there.
 // Clippy pedantic checks are opt-in during CI.
 #![warn(clippy::all)]
 

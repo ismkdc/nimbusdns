@@ -94,7 +94,7 @@ pub fn verify_password(password: &str, stored_hash: &Option<String>) -> bool {
         Some(h) => h,
         None => return false,
     };
-    // Empty hash still requires a password — an explicitly empty stored hash
+    // Empty hash still requires a password - an explicitly empty stored hash
     // means "no password" but the caller must provide something.
     // is_auth_enabled() gates whether this code path is even reached.
     if hash.is_empty() {

@@ -1,5 +1,5 @@
 // =============================================================================
-// NimbusDNS Web Panel — Static File Serving
+// NimbusDNS Web Panel - Static File Serving
 // =============================================================================
 // Exposes the Assets struct and helper functions for the API server
 // to embed the web panel on the same port.

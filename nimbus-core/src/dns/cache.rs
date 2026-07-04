@@ -1,5 +1,5 @@
 // =============================================================================
-// DNS Response Cache — LRU with TTL expiration
+// DNS Response Cache - LRU with TTL expiration
 // =============================================================================
 
 use std::collections::VecDeque;

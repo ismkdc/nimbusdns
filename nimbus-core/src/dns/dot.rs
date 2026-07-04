@@ -1,5 +1,5 @@
 // =============================================================================
-// DNS-over-TLS (DoT) — RFC 7858 Implementation
+// DNS-over-TLS (DoT) - RFC 7858 Implementation
 // =============================================================================
 // Persistent TLS connection per upstream with ID-multiplexed pipelining.
 //   - One tokio task per upstream manages the TLS connection lifecycle
@@ -228,7 +228,7 @@ async fn tls_connection_task(
                             }
                         }
                         Err(e) => {
-                            // Connection closed or error — reconnect
+                            // Connection closed or error - reconnect
                             error!("DoT read failed for {}: {}", address, e);
                             // Fail all pending queries
                             for (_id, tx) in pending.drain() {

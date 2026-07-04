@@ -55,7 +55,7 @@ pub struct AdlistEntry {
     pub date_modified: i64,
 }
 
-/// Gravity database manager — handles adlist blocking rules
+/// Gravity database manager - handles adlist blocking rules
 pub struct GravityDb {
     conn: SafeConnection,
 }
