@@ -1,0 +1,96 @@
+[workspace]
+resolver = "3"
+members = [
+    "nimbus-core",
+    "nimbus-api",
+    "nimbus-web",
+    "nimbus-bin",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT"
+authors = ["NimbusDNS contributors"]
+
+[workspace.dependencies]
+# ── Async runtime ──────────────────────────────────────────────────────
+tokio = { version = "1.52", features = ["full"] }
+tokio-stream = "0.1"
+futures-util = "0.3"
+
+# ── DNS (hickory — formerly trust-dns) ─────────────────────────────────
+hickory-proto = "0.26"
+
+# ── TLS / DoT ──────────────────────────────────────────────────────────
+rustls = "0.23"
+tokio-rustls = "0.26"
+rustls-native-certs = "0.8"
+
+# ── HTTP / Web ─────────────────────────────────────────────────────────
+axum = "0.8"
+tower = "0.5"
+tower-http = { version = "0.7", features = ["cors", "trace", "compression-gzip"] }
+hyper = { version = "1", features = ["full"] }
+http-body-util = "0.1"
+
+# ── Serialization ──────────────────────────────────────────────────────
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1.1"
+
+# ── Database ───────────────────────────────────────────────────────────
+rusqlite = { version = "0.40", features = ["bundled", "vtab", "series"] }
+
+# ── Logging / Observability ────────────────────────────────────────────
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["json", "env-filter", "time"] }
+tracing-appender = "0.2"
+
+# ── CLI ────────────────────────────────────────────────────────────────
+clap = { version = "4.6", features = ["derive", "env"] }
+
+# ── System ─────────────────────────────────────────────────────────────
+nix = { version = "0.31", features = ["fs", "signal", "net", "socket", "poll"] }
+signal-hook = "0.4"
+signal-hook-tokio = { version = "0.4", features = ["futures-v0_3"] }
+libc = "0.2"
+
+# ── Error handling ─────────────────────────────────────────────────────
+thiserror = "2"
+anyhow = "1"
+# ── Time ───────────────────────────────────────────────────────────────
+chrono = { version = "0.4", features = ["serde"] }
+
+# ── Cryptography / Auth ────────────────────────────────────────────────
+sha2 = "0.11"
+hmac = "0.13"
+argon2 = "0.5"
+password-hash = "0.5"
+totp-rs = { version = "5", features = ["gen_secret", "otpauth"] }
+base64 = "0.22"
+rand = "0.10"
+rand_core = { version = "0.6", features = ["getrandom"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+
+# ── Data structures ────────────────────────────────────────────────────
+dashmap = "6"
+parking_lot = "0.12"
+# ── Regex ──────────────────────────────────────────────────────────────
+regex = "1"
+
+# ── HTTP client (for StevenBlack hosts fetcher) ────────────────────────
+reqwest = { version = "0.13", features = ["rustls", "rustls-native-certs"] }
+
+# ── Utilities ──────────────────────────────────────────────────────────
+itertools = "0.15"
+url = "2"
+hostname = "0.4"
+
+# ── Networking ─────────────────────────────────────────────────────────
+bytes = "1"
+socket2 = { version = "0.6", features = ["all"] }
+
+# ── DHCP ──────────────────────────────────────────────────────────────
+dhcproto = "0.15"
+# atty = "0.2"  # deprecated, use std::io::IsTerminal

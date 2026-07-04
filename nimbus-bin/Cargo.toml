@@ -1,0 +1,21 @@
+[package]
+name = "nimbus-bin"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "nimbusdns"
+path = "src/main.rs"
+
+[dependencies]
+nimbus-core = { path = "../nimbus-core" }
+nimbus-api = { path = "../nimbus-api" }
+nimbus-web = { path = "../nimbus-web" }
+tokio.workspace = true
+clap.workspace = true
+tracing.workspace = true
+anyhow.workspace = true
+chrono.workspace = true
+toml.workspace = true
+parking_lot.workspace = true

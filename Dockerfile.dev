@@ -1,0 +1,55 @@
+# =============================================================================
+# FTL-DoT Rust Port — Development Container
+# =============================================================================
+# Latest stable Rust with all system dependencies for building and debugging.
+# Everything stays inside the container — no host tooling needed.
+
+FROM docker.io/rust:1.96-slim-bookworm
+
+# Install build deps and useful tools
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    pkg-config \
+    libsqlite3-dev \
+    libssl-dev \
+    lua5.4-dev \
+    liblua5.4-dev \
+    cmake \
+    net-tools \
+    iputils-ping \
+    dnsutils \
+    curl \
+    vim \
+    strace \
+    && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy manifests first for better caching
+COPY Cargo.toml Cargo.lock* ./
+COPY ftldot-core/Cargo.toml ftldot-core/
+COPY ftldot-dns/Cargo.toml ftldot-dns/
+COPY ftldot-api/Cargo.toml ftldot-api/
+COPY ftldot-web/Cargo.toml ftldot-web/
+COPY ftldot-bin/Cargo.toml ftldot-bin/
+
+# Create src directories and stub files so cargo can resolve
+RUN mkdir -p ftldot-core/src ftldot-dns/src ftldot-api/src ftldot-web/src ftldot-bin/src \
+    && touch ftldot-core/src/lib.rs ftldot-dns/src/lib.rs ftldot-api/src/lib.rs ftldot-web/src/lib.rs ftldot-bin/src/main.rs
+
+# Build dependencies (cached layer)
+RUN cargo build --release 2>/dev/null || true
+
+# Copy actual source
+COPY . .
+
+# Build the full project
+RUN cargo build --release 2>&1 || cargo build 2>&1 || true
+
+# Generate shell config for aliases
+RUN echo 'alias ll="ls -la"' >> ~/.bashrc \
+    && echo 'alias c="cargo"' >> ~/.bashrc \
+    && echo 'alias cr="cargo run --bin pihole-FTL -- -f"' >> ~/.bashrc \
+    && echo 'alias cb="cargo build"' >> ~/.bashrc \
+    && echo 'alias ck="cargo check"' >> ~/.bashrc
+
+CMD ["/bin/bash", "-c", "echo 'FTL-DoT Dev Container Ready'; echo 'Run: cargo build --release --bin pihole-FTL'; sleep infinity"]

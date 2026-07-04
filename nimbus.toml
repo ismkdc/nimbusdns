@@ -1,0 +1,28 @@
+[dns]
+upstreams = [{Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}}]
+bind = "0.0.0.0:53"
+blocking-mode = "NULL"
+query-log = true
+query-retention = 2592000
+
+[webserver]
+ports = ["80o"]
+
+[database]
+gravity-db = "/tmp/gravity.db"
+ftl-db = "/tmp/nimbus.db"
+
+[blocking]
+source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
+refresh-interval = 86400
+
+[dhcp]
+enabled = true
+pool-start = "192.168.1.100"
+pool-end = "192.168.1.200"
+router = "192.168.1.1"
+dns-server = "8.8.8.8"
+lease-time = 86400
+
+[files]
+pid-file = "/tmp/nimbusdns.pid"

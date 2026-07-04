@@ -1,0 +1,744 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NimbusDNS</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, -apple-system, sans-serif; background: #0a0e1a; color: #c8d6e5; min-height: 100vh; }
+
+/* Layout */
+.layout { display: flex; min-height: 100vh; }
+.sidebar { width: 250px; background: linear-gradient(180deg, #0f1629 0%, #141b33 100%); padding: 0; flex-shrink: 0; border-right: 1px solid #1a2340; }
+.sidebar .brand { padding: 24px 20px; border-bottom: 1px solid #1a2340; }
+.sidebar .brand h1 { font-size: 1.2em; color: #64b5f6; font-weight: 600; letter-spacing: -0.02em; }
+.sidebar .brand span { font-size: 0.75em; color: #4a5a7a; }
+.sidebar nav { padding: 12px 0; }
+.sidebar a { display: flex; align-items: center; gap: 12px; padding: 11px 20px; color: #6b7fa0; text-decoration: none; font-size: 0.88em; border-left: 3px solid transparent; transition: all 0.15s; }
+.sidebar a .icon { font-size: 1.2em; width: 24px; text-align: center; }
+.sidebar a:hover { background: rgba(100, 181, 246, 0.06); color: #b0c4e8; }
+.sidebar a.active { background: rgba(100, 181, 246, 0.1); color: #64b5f6; border-left-color: #64b5f6; }
+
+.main { flex: 1; padding: 0; overflow-y: auto; }
+.topbar { padding: 16px 32px; border-bottom: 1px solid #1a2340; display: flex; align-items: center; justify-content: space-between; background: rgba(15, 22, 41, 0.8); backdrop-filter: blur(12px); position: sticky; top: 0; z-index: 10; }
+.topbar h2 { font-size: 1.1em; font-weight: 500; color: #e0e8f5; }
+.topbar .status { font-size: 0.75em; padding: 4px 12px; border-radius: 20px; background: #1a2a3a; color: #4ade80; }
+
+.content { padding: 28px 32px; }
+.page { display: none; }
+.page.active { display: block; }
+
+/* Cards */
+.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card { background: linear-gradient(135deg, #111827 0%, #1a2238 100%); border-radius: 14px; padding: 20px; border: 1px solid #1e2a45; transition: transform 0.15s; }
+.card:hover { transform: translateY(-2px); }
+.card .label { font-size: 0.72em; color: #4a5a7a; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 6px; }
+.card .value { font-size: 1.6em; font-weight: 600; color: #64b5f6; }
+.card .value.green { color: #4ade80; }
+.card .value.red { color: #f87171; }
+.card .value.yellow { color: #fbbf24; }
+
+/* Tables */
+table { width: 100%; border-collapse: collapse; background: #111827; border-radius: 12px; overflow: hidden; border: 1px solid #1e2a45; }
+th { padding: 12px 16px; text-align: left; font-size: 0.72em; color: #4a5a7a; text-transform: uppercase; letter-spacing: 0.08em; background: #0d1520; border-bottom: 1px solid #1e2a45; }
+td { padding: 11px 16px; font-size: 0.88em; text-align: left; border-bottom: 1px solid #151e30; color: #b0c4e8; }
+tr:hover td { background: rgba(100,181,246,0.03); }
+
+/* Buttons */
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 18px; border-radius: 10px; border: none; cursor: pointer; font-size: 0.84em; font-weight: 500; transition: all 0.15s; }
+.btn-primary { background: linear-gradient(135deg, #2563eb, #1d4ed8); color: white; }
+.btn-primary:hover { background: linear-gradient(135deg, #3b82f6, #2563eb); transform: translateY(-1px); }
+.btn-secondary { background: #1a2340; color: #b0c4e8; border: 1px solid #253050; }
+.btn-secondary:hover { background: #253050; }
+.btn-danger { background: linear-gradient(135deg, #dc2626, #b91c1c); color: white; }
+.btn-success { background: linear-gradient(135deg, #16a34a, #15803d); color: white; }
+.btn-sm { padding: 6px 12px; font-size: 0.78em; }
+.btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* Form */
+.form-group { margin-bottom: 16px; }
+.form-group label { display: block; margin-bottom: 5px; color: #6b7fa0; font-size: 0.82em; font-weight: 500; }
+.form-group label.toggle { display: inline-flex; }
+.form-group input, .form-group select { width: 100%; padding: 10px 14px; background: #0d1520; border: 1px solid #1e2a45; border-radius: 10px; color: #c8d6e5; font-size: 16px; transition: border 0.15s; }
+.form-group input:focus, .form-group select:focus { outline: none; border-color: #2563eb; }
+.form-group select { cursor: pointer; appearance: none; -webkit-appearance: none; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%236b7fa0' d='M6 8L1 3h10z'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 12px center; padding-right: 32px; }
+.form-group select option { background: #0d1520; color: #c8d6e5; }
+.form-row { display: flex; gap: 12px; align-items: center; margin-bottom: 16px; }
+.form-row .form-group { flex: 1; margin-bottom: 0; }
+
+/* Toggle */
+.toggle { display: inline-flex; align-items: center; gap: 10px; cursor: pointer; }
+.toggle input { display: none; }
+.toggle .slider { width: 44px; height: 24px; background: #1e2a45; border-radius: 12px; position: relative; transition: 0.2s; }
+.toggle .slider::after { content: ''; position: absolute; width: 20px; height: 20px; border-radius: 50%; background: #4a5a7a; top: 2px; left: 2px; transition: 0.2s; }
+.toggle input:checked + .slider { background: #2563eb; }
+.toggle input:checked + .slider::after { left: 22px; background: white; }
+.toggle .label { font-size: 0.88em; color: #b0c4e8; }
+
+/* DNS Provider List */
+.dns-list { display: grid; gap: 10px; margin: 16px 0; }
+.dns-item { display: flex; align-items: center; gap: 16px; padding: 14px 18px; background: #0d1520; border: 1px solid #1e2a45; border-radius: 12px; cursor: pointer; transition: all 0.15s; }
+.dns-item:hover { border-color: #253050; }
+.dns-item.selected { border-color: #2563eb; background: rgba(37,99,235,0.08); }
+.dns-item .info { flex: 1; }
+.dns-item .name { font-weight: 500; color: #e0e8f5; }
+.dns-item .provider { font-size: 0.78em; color: #4a5a7a; }
+.dns-item .ping { font-size: 0.8em; color: #4ade80; min-width: 50px; text-align: right; }
+.dns-item .ping.slow { color: #fbbf24; }
+.dns-item .ping.fail { color: #f87171; }
+
+/* Setup Wizard */
+.wizard-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); backdrop-filter: blur(8px); z-index: 100; align-items: center; justify-content: center; }
+.wizard-overlay.show { display: flex; }
+.wizard { background: #111827; border: 1px solid #1e2a45; border-radius: 20px; padding: 40px; max-width: 440px; width: 90%; }
+.wizard h2 { font-size: 1.3em; margin-bottom: 8px; color: #e0e8f5; }
+.wizard p { color: #6b7fa0; font-size: 0.88em; margin-bottom: 24px; }
+.wizard .form-group { margin-bottom: 20px; }
+.wizard .btn { width: 100%; justify-content: center; }
+
+/* Toast */
+.toast { position: fixed; bottom: 24px; right: 24px; padding: 14px 24px; border-radius: 12px; color: white; font-weight: 500; font-size: 0.88em; display: none; z-index: 200; }
+.toast.success { background: linear-gradient(135deg, #16a34a, #15803d); display: block; }
+.toast.error { background: linear-gradient(135deg, #dc2626, #b91c1c); display: block; }
+.toast.info { background: linear-gradient(135deg, #2563eb, #1d4ed8); display: block; }
+
+.badge { display: inline-block; padding: 3px 10px; border-radius: 10px; font-size: 0.75em; font-weight: 500; }
+.badge.active { background: rgba(74,222,128,0.15); color: #4ade80; }
+.badge.inactive { background: rgba(248,113,113,0.15); color: #f87171; }
+
+h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
+.section-title { font-size: 0.78em; color: #4a5a7a; text-transform: uppercase; letter-spacing: 0.08em; margin: 24px 0 12px; }
+.stat-bar { padding: 12px 16px; background: #111827; border: 1px solid #1e2a45; border-radius: 10px; font-size: 0.92em; color: #f87171; margin-bottom: 16px; display: inline-block; }
+
+@media (max-width: 768px) {
+  .layout { flex-direction: column; }
+  .sidebar { width: 100%; }
+  .sidebar a { display: inline-flex; padding: 10px 14px; border-left: none; border-bottom: 2px solid transparent; }
+  .sidebar a.active { border-left-color: transparent; border-bottom-color: #64b5f6; }
+  .sidebar nav { display: flex; flex-wrap: wrap; padding: 8px; }
+  .content { padding: 16px; }
+  .cards { grid-template-columns: repeat(2, 1fr); }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <h1>☁️ NimbusDNS</h1>
+      <span>DNS-over-TLS Server</span>
+    </div>
+    <nav>
+      <a href="#" class="active" onclick="showPage('dashboard',this)"><span class="icon">📊</span> Dashboard</a>
+      <a href="#" onclick="showPage('lists',this)"><span class="icon">📋</span> Lists</a>
+      <a href="#" onclick="showPage('blocklist',this)"><span class="icon">🛡️</span> Blocklist</a>
+      <a href="#" onclick="showPage('queries',this)"><span class="icon">🔍</span> Query Log</a>
+      <a href="#" onclick="showPage('dns-config',this)"><span class="icon">🌐</span> DNS Servers</a>
+      <a href="#" onclick="showPage('dhcp',this)"><span class="icon">📡</span> DHCP</a>
+      <a href="#" onclick="showPage('settings',this)"><span class="icon">⚙️</span> Settings</a>
+    </nav>
+  </aside>
+  <div class="main">
+    <div class="topbar"><h2 id="page-title">Dashboard</h2><span class="status" id="top-status">● Running</span></div>
+    <div class="content">
+
+<!-- DASHBOARD -->
+<div class="page active" id="page-dashboard">
+  <div class="cards" id="dash-cards"></div>
+  <h3>Top Clients</h3>
+  <table><thead><tr><th>Client</th><th>Queries</th></tr></thead><tbody id="dash-clients"></tbody></table>
+  <h3>Top Domains</h3>
+  <table><thead><tr><th>Domain</th><th>Queries</th></tr></thead><tbody id="dash-domains"></tbody></table>
+</div>
+
+<!-- LISTS -->
+<div class="page" id="page-lists">
+  <h3>Domain Lists</h3>
+  <div class="form-row">
+    <div class="form-group"><select id="list-type" onchange="loadLists()"><option value="0">Allowlist</option><option value="1">Denylist</option></select></div>
+  </div>
+  <div class="form-row">
+    <div class="form-group" style="flex:1"><input type="text" id="new-domain" placeholder="example.com"></div>
+    <button class="btn btn-primary" onclick="addDomain()">+ Add</button>
+  </div>
+  <table><thead><tr><th>Domain</th><th>Status</th><th style="width:80px">Action</th></tr></thead><tbody id="list-entries"></tbody></table>
+</div>
+
+<!-- BLOCKLIST -->
+<div class="page" id="page-blocklist">
+  <div class="stat-bar" id="bl-stats">🔴 <span id="bl-count">0</span> blocked domains</div>
+  <div class="section-title">Source URL</div>
+  <div class="form-row">
+    <div class="form-group" style="flex:1"><input type="text" id="bl-source-url" placeholder="https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"></div>
+    <button class="btn btn-primary btn-sm" onclick="saveBlocklistSource()">💾 Save & Refresh</button>
+  </div>
+  <div class="section-title" style="margin-top:16px">Manual Entries</div>
+  <div class="form-row">
+    <div class="form-group" style="flex:1"><input type="text" id="bl-domain" placeholder="add.domain.com"></div>
+    <button class="btn btn-primary btn-sm" onclick="addBlocklistEntry()">+ Add</button>
+    <button class="btn btn-secondary btn-sm" onclick="refreshBlocklist()">🔄 Refresh</button>
+  </div>
+  <table><thead><tr><th>Domain</th><th style="width:80px">Action</th></tr></thead><tbody id="bl-entries"></tbody></table>
+  <div id="bl-pagination" style="margin-top:12px;text-align:center"></div>
+</div>
+
+<!-- QUERY LOG -->
+<div class="page" id="page-queries">
+  <div class="form-row">
+    <div class="form-group"><input type="text" id="q-domain" placeholder="Domain filter"></div>
+    <div class="form-group"><input type="text" id="q-client" placeholder="Client filter"></div>
+    <button class="btn btn-primary btn-sm" onclick="loadQueries()">🔍 Search</button>
+  </div>
+  <table><thead><tr><th>Time</th><th>Domain</th><th>Client</th><th>Status</th></tr></thead><tbody id="query-entries"></tbody></table>
+</div>
+
+<!-- DNS SERVERS -->
+<div class="page" id="page-dns-config">
+  <h3>DNS Upstream Servers</h3>
+  <p style="color:#4a5a7a;font-size:0.84em;margin-bottom:16px">Select a DNS provider. All connections use DNS-over-TLS (DoT) for privacy.</p>
+  <div class="dns-list" id="dns-list"></div>
+  <div class="section-title" style="margin-top:24px">✏️ Custom DNS Server</div>
+  <div style="background:#0d1520;border:1px solid #1e2a45;border-radius:12px;padding:16px;margin-bottom:16px">
+    <p style="font-size:0.8em;color:#4a5a7a;margin-bottom:12px">Enter a custom DNS-over-TLS server. Format: <code style="background:#1a2340;padding:2px 6px;border-radius:4px">IP:Port:Hostname</code><br>Example: <code style="background:#1a2340;padding:2px 6px;border-radius:4px">1.1.1.1:853:cloudflare-dns.com</code></p>
+    <input type="text" id="custom-dns-input" placeholder="1.1.1.1:853:cloudflare-dns.com" style="width:100%;padding:10px 14px;background:#0d1520;border:1px solid #1e2a45;border-radius:10px;color:#c8d6e5;font-size:0.9em">
+  </div>
+  <button class="btn btn-primary" onclick="saveDnsSettings()">💾 Save DNS Settings</button>
+  <div id="dns-test-result" style="margin-top:12px;font-size:0.84em;color:#4ade80"></div>
+</div>
+
+<!-- DHCP -->
+<div class="page" id="page-dhcp">
+  <div class="cards" id="dhcp-cards"></div>
+  <div style="margin:24px 0">
+    <label class="toggle"><input type="checkbox" id="dhcp-toggle" onchange="toggleDhcp()"><span class="slider"></span><span class="label">DHCP Server</span></label>
+  </div>
+  <div id="dhcp-config" style="display:none">
+    <div class="form-row">
+      <div class="form-group"><label>Pool Start</label><input type="text" id="dhcp-start" placeholder="192.168.1.100"></div>
+      <div class="form-group"><label>Pool End</label><input type="text" id="dhcp-end" placeholder="192.168.1.200"></div>
+    </div>
+    <div class="form-group"><label>Router</label><input type="text" id="dhcp-router" placeholder="192.168.1.1"></div>
+    <div class="form-group"><label>Lease Time (seconds)</label><input type="number" id="dhcp-lease" value="86400"></div>
+  </div>
+  <button class="btn btn-primary" onclick="saveDhcp()" style="margin-top:12px">💾 Save DHCP Settings</button>
+  <h3 style="margin-top:24px">Active Leases</h3>
+  <table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Expires</th></tr></thead><tbody id="dhcp-leases"></tbody></table>
+</div>
+
+<!-- SETTINGS -->
+<div class="page" id="page-settings">
+  <div class="form-group">
+    <label class="toggle" style="margin-bottom:4px">
+      <input type="checkbox" id="set-query-log">
+      <span class="slider"></span>
+      <span class="label"><strong>Query Logging</strong></span>
+    </label>
+    <p style="font-size:0.78em;color:#4a5a7a;margin:0 0 0 54px">Log all DNS queries to the database</p>
+  </div>
+
+  <div class="form-group">
+    <label>Blocking Mode</label>
+    <select id="set-blocking-mode">
+      <option value="NULL">NULL (return 0.0.0.0)</option>
+      <option value="NXDOMAIN">NXDOMAIN (domain not found)</option>
+      <option value="IP">IP (custom address)</option>
+      <option value="REFUSED">REFUSED (refused)</option>
+    </select>
+  </div>
+
+  <div class="form-group" id="set-blocking-ip-group" style="display:none">
+    <label>Blocking IP Address</label>
+    <input type="text" id="set-blocking-ip" placeholder="0.0.0.0">
+  </div>
+
+  <div class="form-row">
+    <div class="form-group">
+      <label>Cache Size</label>
+      <input type="number" id="set-cache-size" min="0" max="1000000" step="1000">
+    </div>
+    <div class="form-group">
+      <label>Rate Limit (qps)</label>
+      <input type="number" id="set-rate-limit" min="0" max="10000" step="50">
+    </div>
+  </div>
+
+  <div class="form-group">
+    <label>Blocklist Refresh Interval (seconds)</label>
+    <input type="number" id="set-refresh-interval" min="3600" max="604800" step="3600">
+    <p style="font-size:0.78em;color:#4a5a7a;margin-top:4px">How often to re-download the blocklist (default: 86400 = 24h)</p>
+  </div>
+
+  <div style="display:flex;gap:12px;margin-top:20px">
+    <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
+    <span id="set-save-msg" style="font-size:0.84em;color:#4ade80;align-self:center"></span>
+  </div>
+</div>
+
+    </div>
+  </div>
+</div>
+
+<!-- Setup Wizard -->
+<div class="wizard-overlay" id="wizard">
+  <div class="wizard">
+    <h2>☁️ Welcome to NimbusDNS</h2>
+    <p>Set your admin password to get started. You can change it later.</p>
+    <div class="form-group"><label>Admin Password</label><input type="password" id="wiz-pass" placeholder="Enter password"></div>
+    <div class="form-group"><label>Confirm Password</label><input type="password" id="wiz-pass2" placeholder="Confirm password"></div>
+    <button class="btn btn-primary" onclick="finishSetup()">🔒 Complete Setup</button>
+    <button class="btn btn-secondary" style="margin-top:12px;width:100%" onclick="skipSetup()">Skip (no password)</button>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script>
+const API = window.location.origin;
+let selectedDns = null;
+
+// ========== API HELPER ==========
+async function api(path, opts = {}) {
+  const headers = { 'Content-Type': 'application/json' };
+  const sid = localStorage.getItem('sid');
+  if (sid) headers['X-API-Key'] = sid;
+  // Per-request cache busting for GETs
+  const cachePath = (!opts.method || opts.method === 'GET') 
+    ? path + (path.includes('?') ? '&' : '?') + '_t=' + Date.now()
+    : path;
+  try {
+    const res = await fetch(API + cachePath, { headers, ...opts });
+    const data = await res.json();
+    if (data.data) return data.data;
+    if (data.error) throw new Error(data.error);
+    return data;
+  } catch(e) { throw e; }
+}
+
+function toast(msg, type='success') {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.className = 'toast ' + type;
+  t.style.display = 'block';
+  setTimeout(() => t.style.display = 'none', 3500);
+}
+
+// ========== PAGES ==========
+function showPage(name, el) {
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.sidebar a').forEach(a => a.classList.remove('active'));
+  const pg = document.getElementById('page-' + name);
+  if (pg) pg.classList.add('active');
+  if (el) el.classList.add('active');
+  const title = document.getElementById('page-title');
+  if (title) title.textContent = el ? el.textContent.trim() : name;
+  // Load page data (catch errors individually)
+  const fns = {'dashboard':loadDashboard, 'lists':loadLists, 'blocklist':loadBlocklist, 'queries':loadQueries, 'dhcp':loadDhcp, 'dns-config':loadDnsList, 'settings':loadSettings};
+  if (fns[name]) fns[name]().catch(()=>{});
+}
+
+// ========== AUTH ==========
+async function finishSetup() {
+  const p1 = document.getElementById('wiz-pass').value;
+  const p2 = document.getElementById('wiz-pass2').value;
+  if (!p1) { toast('Password is required', 'error'); return; }
+  if (p1 !== p2) { toast('Passwords do not match', 'error'); return; }
+  try {
+    // Step 1: Set the password on the server
+    const setupRes = await fetch(API + '/api/auth/setup', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: p1 })
+    });
+    if (!setupRes.ok) { const e = await setupRes.text(); throw new Error(e); }
+    // Step 2: Authenticate to get a session
+    const authRes = await fetch(API + '/api/auth', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ password: p1 })
+    });
+    const data = await authRes.json();
+    if (data.data && data.data.session) {
+      localStorage.setItem('sid', data.data.session.sid);
+      document.getElementById('wizard').classList.remove('show');
+      toast('✅ Password set! Welcome to NimbusDNS!');
+      loadDashboard();
+    }
+  } catch(e) { toast('Setup error: ' + e, 'error'); }
+}
+
+function skipSetup() {
+  document.getElementById('wizard').classList.remove('show');
+  loadDashboard();
+}
+
+async function ensureAuth() {
+  const sid = localStorage.getItem('sid');
+  if (sid) {
+    // Try a simple API call to check if session is valid
+    try {
+      const info = await api('/api/info');
+      if (info && info.password_set === false) {
+        document.getElementById('wizard').classList.add('show');
+      }
+      return;
+    } catch(e) {
+      // Session expired, clear it
+      localStorage.removeItem('sid');
+    }
+  }
+  // No valid session, check if password is set
+  try {
+    const info = await api('/api/info');
+    if (!info.password_set) {
+      document.getElementById('wizard').classList.add('show');
+    } else {
+      // Password is set but no session — show login prompt
+      const pw = prompt('Enter admin password:');
+      if (pw !== null) {
+        const res = await fetch(API + '/api/auth', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: pw })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.data && data.data.session) {
+            localStorage.setItem('sid', data.data.session.sid);
+            loadDashboard();
+          }
+        } else {
+          alert('Invalid password');
+          localStorage.removeItem('sid');
+          location.reload();
+        }
+      }
+    }
+  } catch(e) {
+    // If we can't reach the API at all, just show the dashboard
+    loadDashboard();
+  }
+}
+
+// ========== DASHBOARD ==========
+async function loadDashboard() {
+  try {
+    const [stats, clients, domains, sys] = await Promise.all([
+      api('/api/stats/summary'), api('/api/stats/top_clients'),
+      api('/api/stats/top_domains'), api('/api/info/system').catch(()=>({}))
+    ]);
+    const memMB = sys.memory_bytes ? (sys.memory_bytes / 1048576).toFixed(0) : '?';
+    const cpuSec = sys.cpu_usec ? (sys.cpu_usec / 1000000).toFixed(2) : '?';
+    document.getElementById('dash-cards').innerHTML = `
+      <div class="card"><div class="label">📥 Total</div><div class="value">${stats.total_queries}</div></div>
+      <div class="card"><div class="label">🔴 Blocked</div><div class="value red">${stats.blocked_queries}<span style="font-size:0.5em;display:block;color:#4a5a7a">${stats.percent_blocked.toFixed(1)}%</span></div></div>
+      <div class="card"><div class="label">💾 Cached</div><div class="value green">${stats.cached_queries}</div></div>
+      <div class="card"><div class="label">📤 Forwarded</div><div class="value yellow">${stats.forwarded_queries}</div></div>
+      <div class="card"><div class="label">⚡ QPS</div><div class="value">${stats.query_per_second.toFixed(1)}</div></div>
+      <div class="card"><div class="label">⏱ Uptime</div><div class="value">${Math.floor(stats.uptime_seconds/86400)}d ${Math.floor((stats.uptime_seconds%86400)/3600)}h</div></div>
+      <div class="card"><div class="label">🧠 RAM</div><div class="value">${memMB} MB</div></div>
+      <div class="card"><div class="label">⚙️ CPU</div><div class="value green">${cpuSec}s</div></div>
+    `;
+    document.getElementById('dash-clients').innerHTML = (clients||[]).map(c => `<tr><td>${c.name}</td><td>${c.count}</td></tr>`).join('');
+    document.getElementById('dash-domains').innerHTML = (domains||[]).map(d => `<tr><td>${d.name}</td><td>${d.count}</td></tr>`).join('');
+  } catch(e) { toast('Dashboard: ' + e, 'error'); }
+}
+
+// ========== LISTS ==========
+async function loadLists() {
+  const type = document.getElementById('list-type').value;
+  try {
+    const items = await api(type==='0' ? '/api/allowlist' : '/api/denylist');
+    document.getElementById('list-entries').innerHTML = (items||[]).map(i => `
+      <tr><td>${i.domain}</td><td><span class="badge ${i.enabled?'active':'inactive'}">${i.enabled?'Active':'Disabled'}</span></td>
+      <td><button class="btn btn-danger btn-sm" onclick="removeDomain(${i.id},'${type}')">✕</button></td></tr>
+    `).join('');
+  } catch(e) { toast('Lists: '+e, 'error'); }
+}
+
+async function addDomain() {
+  const type = document.getElementById('list-type').value;
+  const domain = document.getElementById('new-domain').value.trim();
+  if (!domain) return;
+  try {
+    await api(type==='0' ? '/api/allowlist' : '/api/denylist', { method:'POST', body: JSON.stringify({domain}) });
+    document.getElementById('new-domain').value = '';
+    loadLists(); toast('Domain added');
+  } catch(e) { toast('Add failed: '+e, 'error'); }
+}
+
+async function removeDomain(id, type) {
+  try { await api(type==='0' ? `/api/allowlist/${id}` : `/api/denylist/${id}`, {method:'DELETE'}); loadLists(); toast('Removed'); }
+  catch(e) { toast('Remove failed: '+e, 'error'); }
+}
+
+// ========== BLOCKLIST ==========
+let blPage = 1;
+async function loadBlocklist() {
+  try {
+    const [info, cfg] = await Promise.all([
+      api('/api/blocklist'),
+      api('/api/config').catch(()=>({}))
+    ]);
+    document.getElementById('bl-count').textContent = info.domains.toLocaleString();
+    // Show current source URL
+    if (cfg.blocking && cfg.blocking['source-url']) {
+      document.getElementById('bl-source-url').value = cfg.blocking['source-url'];
+    }
+    loadBlEntries();
+  } catch(e) { toast('Blocklist: '+e, 'error'); }
+}
+
+async function saveBlocklistSource() {
+  const url = document.getElementById('bl-source-url').value.trim();
+  if (!url) { toast('Enter a valid URL', 'error'); return; }
+  try {
+    await api('/api/config', {method:'PATCH', body:JSON.stringify({blocking:{'source-url':url}})});
+    toast('Source saved! Refreshing...');
+    refreshBlocklist();
+  } catch(e) { toast('Save failed: '+e, 'error'); }
+}
+async function loadBlEntries() {
+  try {
+    const data = await api('/api/blocklist/entries?limit=50&offset='+((blPage-1)*50));
+    document.getElementById('bl-entries').innerHTML = (data.entries||[]).map(d =>
+      `<tr><td>${d}</td><td><button class="btn btn-danger btn-sm" onclick="deleteBl('${d}')">✕</button></td></tr>`
+    ).join('');
+    const tp = Math.ceil((data.total||0)/(data.limit||50));
+    document.getElementById('bl-pagination').innerHTML =
+      (blPage>1?'<button class="btn btn-secondary btn-sm" onclick="blPage--;loadBlEntries()">◀</button> ':'') +
+      `<span style="color:#4a5a7a"> Page ${blPage}/${tp||1} </span>` +
+      (blPage<tp?' <button class="btn btn-secondary btn-sm" onclick="blPage++;loadBlEntries()">▶</button>':'');
+  } catch(e) { toast('Entries: '+e, 'error'); }
+}
+async function addBlocklistEntry() {
+  const domain = document.getElementById('bl-domain').value.trim();
+  if (!domain) return;
+  try { await api('/api/blocklist', {method:'POST', body:JSON.stringify({domain})}); document.getElementById('bl-domain').value=''; loadBlEntries(); toast('Added'); }
+  catch(e) { toast('Add failed: '+e, 'error'); }
+}
+async function deleteBl(domain) {
+  try { await api('/api/blocklist/'+encodeURIComponent(domain), {method:'DELETE'}); loadBlEntries(); toast('Removed'); }
+  catch(e) { toast('Delete failed: '+e, 'error'); }
+}
+async function refreshBlocklist() {
+  try { await api('/api/blocklist/refresh', {method:'POST'}); toast('Refresh started...','info'); setTimeout(loadBlocklist,15000); }
+  catch(e) { toast('Refresh failed: '+e, 'error'); }
+}
+
+// ========== SETTINGS ==========
+async function loadSettings() {
+  try {
+    const cfg = await api('/api/config');
+    document.getElementById('set-query-log').checked = cfg.dns?.['query-log'] ?? true;
+    document.getElementById('set-blocking-mode').value = cfg.dns?.['blocking-mode'] || 'NULL';
+    document.getElementById('set-cache-size').value = cfg.dns?.['cache-size'] ?? 10000;
+    document.getElementById('set-rate-limit').value = cfg.dns?.['rate-limit'] ?? 1000;
+    document.getElementById('set-refresh-interval').value = cfg.blocking?.['refresh-interval'] ?? 86400;
+    document.getElementById('set-blocking-ip').value = cfg.dns?.['blocking-ip'] || '0.0.0.0';
+    toggleBlockingIp(cfg.dns?.['blocking-mode']);
+  } catch(e) { toast('Settings: '+e, 'error'); }
+}
+
+function toggleBlockingIp(mode) {
+  document.getElementById('set-blocking-ip-group').style.display = mode === 'IP' ? 'block' : 'none';
+}
+
+// Listen for blocking-mode change (delegated, works in SPA)
+document.addEventListener('change', (e) => {
+  if (e.target && e.target.id === 'set-blocking-mode') {
+    toggleBlockingIp(e.target.value);
+  }
+});
+
+async function saveSettings() {
+  try {
+    const body = {
+      dns: {
+        'query-log': document.getElementById('set-query-log').checked,
+        'blocking-mode': document.getElementById('set-blocking-mode').value,
+        'cache-size': parseInt(document.getElementById('set-cache-size').value) || 10000,
+        'rate-limit': parseInt(document.getElementById('set-rate-limit').value) || 1000,
+      },
+      blocking: {
+        'refresh-interval': parseInt(document.getElementById('set-refresh-interval').value) || 86400,
+      }
+    };
+    // Include blocking-ip only if mode is IP
+    if (body.dns['blocking-mode'] === 'IP') {
+      body.dns['blocking-ip'] = document.getElementById('set-blocking-ip').value || '0.0.0.0';
+    }
+    await api('/api/config', {method:'PATCH', body:JSON.stringify(body)});
+    document.getElementById('set-save-msg').textContent = '✅ Saved';
+    setTimeout(() => document.getElementById('set-save-msg').textContent = '', 3000);
+    toast('Settings saved');
+  } catch(e) { toast('Save failed: '+e, 'error'); }
+}
+
+// ========== QUERIES ==========
+async function loadQueries() {
+  const domain = document.getElementById('q-domain').value;
+  const client = document.getElementById('q-client').value;
+  try {
+    const data = await api('/api/queries?limit=50'+(domain?'&domain='+encodeURIComponent(domain):'')+(client?'&client='+encodeURIComponent(client):''));
+    document.getElementById('query-entries').innerHTML = (data.entries||[]).map(q =>
+      `<tr><td style="font-size:0.8em;color:#4a5a7a">${new Date(q.timestamp*1000).toLocaleString()}</td><td>${q.domain}</td><td>${q.client||'-'}</td>
+      <td><span class="badge ${q.status===1?'active':q.status===2?'active':'inactive'}">${['Unknown','Blocked','Cached','Forwarded','NXDOMAIN','SERVFAIL'][q.status]||q.status}</span></td></tr>`
+    ).join('');
+  } catch(e) { toast('Queries: '+e, 'error'); }
+}
+
+// ========== DNS SERVERS ==========
+const DNS_PROVIDERS = [
+  {name:'Cloudflare', provider:'Cloudflare Inc.', ip:'1.1.1.1', hostname:'cloudflare-dns.com', port:853, popular:true},
+  {name:'Google', provider:'Google LLC', ip:'8.8.8.8', hostname:'dns.google', port:853, popular:true},
+  {name:'Quad9', provider:'Quad9 Foundation', ip:'9.9.9.9', hostname:'dns.quad9.net', port:853, popular:true},
+  {name:'OpenDNS', provider:'Cisco', ip:'208.67.222.222', hostname:'dns.opendns.com', port:853},
+  {name:'Mullvad', provider:'Mullvad VPN', ip:'194.242.2.2', hostname:'base.dns.mullvad.net', port:853},
+];
+
+async function loadDnsList() {
+  try {
+    // Get current upstream config for pre-selection
+    let currentLookup = '';
+    try {
+      const cfg = await api('/api/config');
+      if (cfg.dns && cfg.dns.upstreams && cfg.dns.upstreams[0]) {
+        const u = cfg.dns.upstreams[0];
+        if (u.Tls) currentLookup = u.Tls.hostname;
+        else if (u.Plain) currentLookup = u.Plain.address; // fallback: IP
+      }
+    } catch(e) {}
+    
+    // Try to match currentLookup (hostname or IP) to a known provider
+    if (!selectedDns) {
+      const matched = DNS_PROVIDERS.find(p =>
+        currentLookup === p.hostname || currentLookup === p.ip || currentLookup.includes(p.hostname)
+      );
+      if (matched) selectedDns = matched.name;
+      // Default to Google if no configured upstream at all
+      if (!currentLookup) selectedDns = 'Google';
+    }
+    
+    document.getElementById('dns-list').innerHTML = DNS_PROVIDERS.map(p => {
+      const isSelected = selectedDns === p.name;
+      if (isSelected) selectedDns = p.name;
+      return `<div class="dns-item ${isSelected?'selected':''}" onclick="selectDns('${p.name.replace(/'/g,"\\'")}')" id="dns-${p.name.replace(/[^a-zA-Z0-9]/g,'')}">
+        <div class="info"><div class="name">${p.name} ${p.popular?'<span style="font-size:0.7em;color:#fbbf24">★</span>':''}</div><div class="provider">${p.provider}</div></div>
+        <div class="ping" id="ping-${p.name.replace(/[^a-zA-Z0-9]/g,'')}">⏳</div>
+      </div>`;
+    }).join('');
+    DNS_PROVIDERS.forEach(p => measureDns(p));
+  } catch(e) {
+    document.getElementById('dns-list').innerHTML = '<div style="color:#f87171;padding:20px">Error: ' + e.message + '</div>';
+  }
+}
+
+async function measureDns(provider) {
+  const el = document.getElementById('ping-' + provider.name.replace(/[^a-zA-Z0-9]/g,''));
+  if (!el) return;
+  el.textContent = '⏳';
+  try {
+    // Real TCP latency measurement via server-side benchmark
+    const res = await fetch(API + '/api/dns/benchmark', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({ip:provider.ip, port:provider.port})
+    });
+    const data = await res.json();
+    if (data.data && data.data.latency_ms !== null) {
+      const ms = data.data.latency_ms;
+      el.textContent = ms + 'ms';
+      el.className = 'ping' + (ms > 200 ? ' slow' : '');
+    } else {
+      el.textContent = '✕';
+      el.className = 'ping fail';
+    }
+  } catch(e) {
+    el.textContent = '✕';
+    el.className = 'ping fail';
+  }
+}
+
+function selectDns(name) {
+  selectedDns = name;
+  document.querySelectorAll('.dns-item').forEach(el => el.classList.remove('selected'));
+  const id = 'dns-' + name.replace(/[^a-zA-Z0-9]/g,'');
+  document.getElementById(id)?.classList.add('selected');
+}
+
+async function saveDnsSettings() {
+  let upstream;
+  const custom = document.getElementById('custom-dns-input').value.trim();
+  
+  if (custom) {
+    const parts = custom.split(':');
+    if (parts.length < 3) { toast('Format: IP:Port:Hostname', 'error'); return; }
+    const port = parseInt(parts[parts.length - 2]);
+    const hostname = parts.slice(parts.length - 1)[0];
+    const address = parts.slice(0, parts.length - 2).join(':');
+    if (!address || isNaN(port) || !hostname) { toast('Invalid format', 'error'); return; }
+    upstream = {Tls:{address, port, hostname}};
+  } else if (selectedDns) {
+    const provider = DNS_PROVIDERS.find(p => p.name === selectedDns);
+    if (!provider) return;
+    upstream = {Tls:{address:provider.ip, port:provider.port, hostname:provider.hostname}};
+  } else {
+    toast('Select a DNS provider or enter custom', 'error');
+    return;
+  }
+  try {
+    await api('/api/config', {method:'PATCH', body:JSON.stringify({dns:{upstreams:[upstream]}})});
+    document.getElementById('dns-test-result').textContent = '✅ DNS saved (restart may be needed)';
+    toast('DNS settings saved!');
+  } catch(e) { toast('Failed: ' + e, 'error'); }
+}
+
+// ========== DHCP ==========
+async function loadDhcp() {
+  try {
+    const status = await api('/api/dhcp');
+    document.getElementById('dhcp-toggle').checked = status.enabled;
+    document.getElementById('dhcp-config').style.display = status.enabled ? 'block' : 'none';
+    document.getElementById('dhcp-cards').innerHTML = `
+      <div class="card"><div class="label">📡 DHCP Server</div><div class="value ${status.enabled?'green':'red'}">${status.enabled?'Active':'Disabled'}</div></div>
+    `;
+    // Load current config values
+    try {
+      const cfg = await api('/api/config');
+      if (cfg.dhcp) {
+        document.getElementById('dhcp-start').value = cfg.dhcp['pool-start'] || '192.168.1.100';
+        document.getElementById('dhcp-end').value = cfg.dhcp['pool-end'] || '192.168.1.200';
+        document.getElementById('dhcp-router').value = cfg.dhcp.router || '192.168.1.1';
+
+        document.getElementById('dhcp-lease').value = cfg.dhcp['lease-time'] || 86400;
+      }
+    } catch(e) {}
+    
+    const leases = await api('/api/dhcp/leases');
+    document.getElementById('dhcp-leases').innerHTML = (leases||[]).map(l =>
+      `<tr><td>${l.ip}</td><td>${l.mac?Array.from(l.mac).map(b=>b.toString(16).padStart(2,'0')).join(':').toLowerCase():'-'}</td><td>${l.hostname||'-'}</td><td>${l.expires_at?new Date(l.expires_at*1000).toLocaleString():'-'}</td></tr>`
+    ).join('');
+  } catch(e) {}
+}
+
+async function toggleDhcp() {
+  const enabled = document.getElementById('dhcp-toggle').checked;
+  document.getElementById('dhcp-config').style.display = enabled ? 'block' : 'none';
+}
+
+async function saveDhcp() {
+  const enabled = document.getElementById('dhcp-toggle').checked;
+  const dhcp = {
+    enabled,
+    'pool-start': document.getElementById('dhcp-start').value,
+    'pool-end': document.getElementById('dhcp-end').value,
+    'router': document.getElementById('dhcp-router').value,
+    'lease-time': parseInt(document.getElementById('dhcp-lease').value) || 86400
+  };
+  try {
+    await api('/api/config', {method:'PATCH', body:JSON.stringify({dhcp})});
+    toast('DHCP settings saved (restart required to apply)');
+  } catch(e) { toast('Save failed: '+e, 'error'); }
+}
+
+// ========== INIT ==========
+ensureAuth().then(() => { loadDashboard(); });
+</script>
+</body>
+</html>
