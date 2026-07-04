@@ -94,3 +94,9 @@ socket2 = { version = "0.6", features = ["all"] }
 # -- DHCP --------------------------------------------------------------
 dhcproto = "0.15"
 # atty = "0.2"  # deprecated, use std::io::IsTerminal
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+opt-level = 3
