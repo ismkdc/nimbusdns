@@ -202,15 +202,15 @@ impl GravityDb {
             return Ok(());
         }
         self.conn.with_conn(|conn| {
-            conn.execute_batch("BEGIN")?;
-            conn.execute_batch("DELETE FROM gravity")?;
+            let txn = conn.transaction()?;
+            txn.execute_batch("DELETE FROM gravity")?;
             for domain in domains {
-                conn.execute(
+                txn.execute(
                     "INSERT INTO gravity (domain, adlist_id) VALUES (?1, 0)",
                     rusqlite::params![domain],
                 )?;
             }
-            conn.execute_batch("COMMIT")?;
+            txn.commit()?;
             Ok(())
         })
     }

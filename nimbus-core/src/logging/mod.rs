@@ -25,8 +25,8 @@ pub fn init() -> anyhow::Result<()> {
         .unwrap_or_else(|_| {
             EnvFilter::builder()
                 .with_default_directive(Level::INFO.into())
-                .parse("nimbus=debug,want=info")
-                .unwrap()
+                .parse("nimbus=info,want=warn")
+                .expect("Invalid RUST_LOG filter")
         });
 
     // Register the log layer (console)

@@ -102,7 +102,6 @@ fn flush_batch(db: &QueryDb, batch: &mut Vec<StoredQuery>) {
         error!("Failed to write {} queries: {}", count, e);
     } else {
         debug!("Wrote {} queries to database", count);
+        batch.clear();
     }
-
-    batch.clear();
 }

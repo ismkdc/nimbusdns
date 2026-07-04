@@ -46,7 +46,7 @@ impl QueryDb {
         let conn = SafeConnection::open(path, busy_timeout)?;
 
         // Run migrations
-        conn.with_conn(run_migrations)?;
+        conn.with_conn(|conn| run_migrations(conn))?;
 
         info!("Query database opened: {}", path.display());
         Ok(Self { conn })
@@ -89,9 +89,9 @@ impl QueryDb {
             return Ok(());
         }
         self.conn.with_conn(|conn| {
-            conn.execute_batch("BEGIN")?;
+            let txn = conn.transaction()?;
             for query in queries {
-                conn.execute(
+                txn.execute(
                     "INSERT INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
                      dbl_type, dbl_status, dbl_reply_time, dbl_reply_type, dbl_flags,
                      dbl_interface, dbl_elapsed_ms, dbl_adlist_id, dbl_cache_id,
@@ -116,7 +116,7 @@ impl QueryDb {
                     ],
                 )?;
             }
-            conn.execute_batch("COMMIT")?;
+            txn.commit()?;
             Ok(())
         })
     }

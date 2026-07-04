@@ -27,6 +27,8 @@ docker run -d --name nimbusdns --restart unless-stopped --network host \
 
 ### Docker Compose
 
+Create `nimbus.toml` on the host and mount it:
+
 ```yaml
 services:
   nimbusdns:
@@ -38,21 +40,7 @@ services:
       - NET_ADMIN
       - NET_BIND_SERVICE
     volumes:
-      - nimbusdns-data:/var/lib/nimbusdns
-    environment:
-      - NIMBUS_dns_upstreams=tls://8.8.8.8#853#dns.google
-      - NIMBUS_dns_bind=0.0.0.0:53
-      - NIMBUS_dns_blocking_mode=NULL
-      - NIMBUS_dns_query_log=true
-      - NIMBUS_webserver_port=80o
-      - NIMBUS_dhcp_enabled=true
-      - NIMBUS_dhcp_pool_start=192.168.1.100
-      - NIMBUS_dhcp_pool_end=192.168.1.200
-      - NIMBUS_dhcp_router=192.168.1.1
-      - NIMBUS_dhcp_lease_time=86400
-      - NIMBUS_blocking_source_url=https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
-      - NIMBUS_blocking_refresh_interval=86400
-    volumes:
+      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro
       - nimbusdns-data:/var/lib/nimbusdns
 
 volumes:
@@ -96,6 +84,8 @@ lease-time = 86400
 source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
 refresh-interval = 86400
 ```
+
+Or configure everything via environment variables (see Docker Compose example above).
 
 ## Build from Source
 

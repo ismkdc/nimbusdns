@@ -123,13 +123,13 @@ impl SafeConnection {
         })
     }
 
-    /// Execute a closure with a reference to the connection
+    /// Execute a closure with a mutable reference to the connection
     pub fn with_conn<F, T>(&self, f: F) -> Result<T, DatabaseError>
     where
-        F: FnOnce(&Connection) -> Result<T, DatabaseError>,
+        F: FnOnce(&mut Connection) -> Result<T, DatabaseError>,
     {
-        let conn = self.conn.lock();
-        f(&conn)
+        let mut conn = self.conn.lock();
+        f(&mut conn)
     }
 
     /// Get the database file path
