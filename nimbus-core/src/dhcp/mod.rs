@@ -164,10 +164,15 @@ async fn handle_dhcp_packet(
         }
     };
 
+    let chaddr = msg.chaddr();
+    if chaddr.len() < 6 { return; }
+    let mut mac = [0u8; 6];
+    mac.copy_from_slice(&chaddr[..6]);
+
     let msg_type = match msg.opts().get(dhcproto::v4::OptionCode::MessageType) {
         Some(dhcproto::v4::DhcpOption::MessageType(mt)) => {
             info!("DHCP msg_type={:?} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                mt, chaddr[0], chaddr[1], chaddr[2], chaddr[3], chaddr[4], chaddr[5]);
+                mt, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             *mt
         }
         _ => {
@@ -175,12 +180,6 @@ async fn handle_dhcp_packet(
             return;
         }
     };
-
-    let chaddr = msg.chaddr();
-    if chaddr.len() < 6 { return; }
-    let mut mac = [0u8; 6];
-    mac.copy_from_slice(&chaddr[..6]);
-
     match msg_type {
         MessageType::Discover => {
             let offered_ip = { server.pool.write().next_available() }; // drop guard before await
