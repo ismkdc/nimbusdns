@@ -93,13 +93,23 @@ pub async fn start(
 
     info!("DHCP server starting: pool {} - {}", pool_start, pool_end);
 
+    // Read the router/server IP for binding - this must match ServerIdentifier
+    let server_ip = {
+        let cfg = config.read();
+        cfg.router.unwrap_or_else(|| {
+            // Default router IP if not configured
+            Ipv4Addr::new(192, 168, 1, 1)
+        })
+    };
+
     let server = Arc::new(DhcpServer {
         config,
         leases: Arc::new(RwLock::new(HashMap::new())),
         pool: Arc::new(RwLock::new(IpPool::new(pool_start, pool_end))),
     });
 
-    let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT);
+    // Bind to the specific LAN IP so that OFFER/ACK source IP matches ServerIdentifier
+    let bind_addr = SocketAddrV4::new(server_ip, SERVER_PORT);
     let socket = match tokio::net::UdpSocket::bind(std::net::SocketAddr::V4(bind_addr)).await {
         Ok(s) => {
             let _ = s.set_broadcast(true);
@@ -255,12 +265,12 @@ async fn handle_dhcp_packet(
     }
 }
 
-fn make_msg(xid: u32, yiaddr: Ipv4Addr, chaddr: &[u8]) -> Message {
+fn make_msg(xid: u32, yiaddr: Ipv4Addr, siaddr: Ipv4Addr, chaddr: &[u8]) -> Message {
     Message::new_with_id(
         xid,
         Ipv4Addr::UNSPECIFIED, // ciaddr
         yiaddr,
-        Ipv4Addr::UNSPECIFIED, // siaddr
+        siaddr,                // siaddr = server IP (must match ServerIdentifier)
         Ipv4Addr::UNSPECIFIED, // giaddr
         chaddr,
     )
@@ -268,13 +278,13 @@ fn make_msg(xid: u32, yiaddr: Ipv4Addr, chaddr: &[u8]) -> Message {
 
 fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
-    let mut msg = make_msg(discover.xid(), offered_ip, &discover.chaddr()[..6]);
+    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let mut msg = make_msg(discover.xid(), offered_ip, sid, &discover.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
     msg.set_flags(Flags::default().set_broadcast());
 
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Offer));
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
     opts.insert(dhcproto::v4::DhcpOption::ServerIdentifier(sid));
     opts.insert(dhcproto::v4::DhcpOption::SubnetMask(cfg.netmask));
     // DNS server: if configured, use it; otherwise use ourselves (the router/gateway)
@@ -299,7 +309,8 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
 
 fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
-    let mut msg = make_msg(request.xid(), offered_ip, &request.chaddr()[..6]);
+    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let mut msg = make_msg(request.xid(), offered_ip, sid, &request.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
     msg.set_flags(Flags::default().set_broadcast());
 
