@@ -112,6 +112,11 @@ impl IpPool {
     fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
         Self { start, end, allocated: Vec::new() }
     }
+    /// Check if an IP is within the pool range
+    fn contains(&self, ip: Ipv4Addr) -> bool {
+        ip >= self.start && ip <= self.end
+    }
+    /// Return the next available IP, or None if pool is full
     fn next_available(&mut self) -> Option<Ipv4Addr> {
         let mut ip = self.start;
         while ip <= self.end {
@@ -119,18 +124,30 @@ impl IpPool {
                 self.allocated.push(ip);
                 return Some(ip);
             }
-            ip = next_ipv4(ip);
+            ip = next_ipv4(ip, self.end);
+            if ip > self.end { break; }
         }
         None
+    }
+    /// Mark an IP as allocated (used when ACKing a renewal/request)
+    fn mark_allocated(&mut self, ip: Ipv4Addr) {
+        if self.contains(ip) && !self.allocated.contains(&ip) {
+            self.allocated.push(ip);
+        }
     }
     fn release(&mut self, ip: Ipv4Addr) {
         self.allocated.retain(|&a| a != ip);
     }
+    /// Check if an IP is currently allocated
+    fn is_allocated(&self, ip: Ipv4Addr) -> bool {
+        self.allocated.contains(&ip)
+    }
 }
 
-fn next_ipv4(ip: Ipv4Addr) -> Ipv4Addr {
+fn next_ipv4(ip: Ipv4Addr, end: Ipv4Addr) -> Ipv4Addr {
     let octets = ip.octets();
-    Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3].wrapping_add(1))
+    let next = Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3].wrapping_add(1));
+    if next > end { end } else { next }
 }
 
 /// Encode a DHCP message to bytes using dhcproto's Encoder.
@@ -271,9 +288,22 @@ async fn handle_dhcp_packet(
     };
     match msg_type {
         MessageType::Discover => {
-            let offered_ip = { server.pool.write().next_available() }; // drop guard before await
+            // Reuse existing lease IP if MAC already has one
+            let offered_ip = {
+                let leases = server.leases.read();
+                leases.get(&mac).map(|l| l.ip)
+            };
+            let offered_ip = offered_ip.or_else(|| {
+                server.pool.write().next_available()
+            });
             match offered_ip {
                 Some(ip) => {
+                    // Extend lease time on rediscovery
+                    if server.leases.read().contains_key(&mac) {
+                        let expires = chrono::Utc::now().timestamp()
+                            + server.config.read().lease_time as i64;
+                        server.leases.write().get_mut(&mac).map(|l| l.expires_at = expires);
+                    }
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
                         Ok(bytes) => {
@@ -305,6 +335,20 @@ async fn handle_dhcp_packet(
                 });
 
             if let Some(ip) = requested_ip {
+                // Validate: IP must be in pool range
+                let valid = { server.pool.read().contains(ip) };
+
+                if !valid {
+                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP not in pool)",
+                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    let nak = build_nak(&msg, &server);
+                    if let Ok(bytes) = encode_message(&nak) {
+                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
+                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
+                    }
+                    return;
+                }
+
                 let (_lease_time, expires, hostname) = {
                     let cfg = server.config.read();
                     let lt = cfg.lease_time;
@@ -316,6 +360,8 @@ async fn handle_dhcp_packet(
                     (lt, chrono::Utc::now().timestamp() + lt as i64, host)
                 };
 
+                // Sync pool: mark IP as allocated (in case it was free)
+                server.pool.write().mark_allocated(ip);
                 let lease = Lease { ip, mac, hostname, expires_at: expires };
                 server.leases.write().insert(mac, lease);
 
@@ -365,7 +411,8 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
     let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
     let mut msg = make_msg(discover.xid(), offered_ip, sid, &discover.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
-    msg.set_flags(Flags::default().set_broadcast());
+    // Use client's broadcast flag (don't force broadcast)
+    msg.set_flags(discover.flags());
 
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Offer));
@@ -377,9 +424,8 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
     } else {
         opts.insert(dhcproto::v4::DhcpOption::DomainNameServer(vec![sid]));
     }
-    if let Some(router) = cfg.router {
-        opts.insert(dhcproto::v4::DhcpOption::Router(vec![router]));
-    }
+    // Always send Router option (use sid as fallback)
+    opts.insert(dhcproto::v4::DhcpOption::Router(vec![cfg.router.unwrap_or(sid)]));
     opts.insert(dhcproto::v4::DhcpOption::AddressLeaseTime(cfg.lease_time));
     opts.insert(dhcproto::v4::DhcpOption::Renewal(cfg.lease_time / 2));
     opts.insert(dhcproto::v4::DhcpOption::Rebinding((cfg.lease_time * 3) / 4));
@@ -396,11 +442,11 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
     let mut msg = make_msg(request.xid(), offered_ip, sid, &request.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
-    msg.set_flags(Flags::default().set_broadcast());
+    // Use client's broadcast flag
+    msg.set_flags(request.flags());
 
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Ack));
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
     opts.insert(dhcproto::v4::DhcpOption::ServerIdentifier(sid));
     opts.insert(dhcproto::v4::DhcpOption::SubnetMask(cfg.netmask));
     // DNS server: use ourselves (the router) if not explicitly configured
@@ -409,9 +455,8 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     } else {
         opts.insert(dhcproto::v4::DhcpOption::DomainNameServer(vec![sid]));
     }
-    if let Some(router) = cfg.router {
-        opts.insert(dhcproto::v4::DhcpOption::Router(vec![router]));
-    }
+    // Always send Router option (use sid as fallback)
+    opts.insert(dhcproto::v4::DhcpOption::Router(vec![cfg.router.unwrap_or(sid)]));
     opts.insert(dhcproto::v4::DhcpOption::AddressLeaseTime(cfg.lease_time));
     if let Some(ref domain) = cfg.domain {
         opts.insert(dhcproto::v4::DhcpOption::DomainName(domain.clone()));
@@ -421,14 +466,39 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     msg
 }
 
-/// Get current leases (for API)
+fn build_nak(request: &Message, server: &DhcpServer) -> Message {
+    let cfg = server.config.read();
+    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let mut msg = make_msg(request.xid(), Ipv4Addr::UNSPECIFIED, sid, &request.chaddr()[..6]);
+    msg.set_opcode(Opcode::BootReply);
+    msg.set_flags(request.flags());
+    let mut opts = DhcpOptions::new();
+    opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Nak));
+    opts.insert(dhcproto::v4::DhcpOption::ServerIdentifier(sid));
+    msg.set_opts(opts);
+    drop(cfg);
+    msg
+}
+
+/// Get current leases (for API), filtering out expired ones
 pub fn get_leases(server: &DhcpServer) -> Vec<Lease> {
-    server.leases.read().values().cloned().collect()
+    let now = chrono::Utc::now().timestamp();
+    let mut leases = server.leases.write();
+    // Remove expired leases and release their IPs back to pool
+    leases.retain(|_mac, lease| {
+        if lease.expires_at <= now {
+            server.pool.write().release(lease.ip);
+            false
+        } else {
+            true
+        }
+    });
+    leases.values().cloned().collect()
 }
 
 pub fn get_lease_count(server: &DhcpServer) -> usize {
-    server.leases.read().len()
+    let now = chrono::Utc::now().timestamp();
+    server.leases.read().values().filter(|l| l.expires_at > now).count()
 }
 
-// Use dhcproto's Flags directly
-use dhcproto::v4::Flags;
+
