@@ -81,7 +81,7 @@ impl FtlLogLevel {
 }
 
 /// Log macro convenience functions
-pub mod ftl {
+pub mod nimbus {
     use super::*;
 
     pub fn debug(target: &str, msg: impl std::fmt::Display) {

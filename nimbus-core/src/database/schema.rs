@@ -3,7 +3,7 @@
 // =============================================================================
 
 /// Initial Query database schema (migration v1)
-pub const INITIAL_FTL_SCHEMA: &str = "
+pub const INITIAL_NIMBUS_SCHEMA: &str = "
 CREATE TABLE IF NOT EXISTS queries (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     timestamp INTEGER NOT NULL,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS aliasclient (
 );
 
 -- NimbusDNS metadata
-CREATE TABLE IF NOT EXISTS ftl (
+CREATE TABLE IF NOT EXISTS nimbus (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     version TEXT NOT NULL,
     build_time INTEGER,

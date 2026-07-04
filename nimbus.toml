@@ -10,7 +10,7 @@ ports = ["80o"]
 
 [database]
 gravity-db = "/tmp/gravity.db"
-ftl-db = "/tmp/nimbus.db"
+nimbus-db = "/tmp/nimbus.db"
 
 [blocking]
 source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"

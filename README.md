@@ -40,18 +40,18 @@ services:
     volumes:
       - /var/lib/nimbusdns:/tmp
     environment:
-      - FTLCONF_dns_upstreams=tls://8.8.8.8#853#dns.google
-      - FTLCONF_dns_bind=0.0.0.0:53
-      - FTLCONF_dns_blocking_mode=NULL
-      - FTLCONF_dns_query_log=true
-      - FTLCONF_webserver_port=80o
-      - FTLCONF_dhcp_enabled=true
-      - FTLCONF_dhcp_pool_start=192.168.1.100
-      - FTLCONF_dhcp_pool_end=192.168.1.200
-      - FTLCONF_dhcp_router=192.168.1.1
-      - FTLCONF_dhcp_lease_time=86400
-      - FTLCONF_blocking_source_url=https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
-      - FTLCONF_blocking_refresh_interval=86400
+      - NIMBUS_dns_upstreams=tls://8.8.8.8#853#dns.google
+      - NIMBUS_dns_bind=0.0.0.0:53
+      - NIMBUS_dns_blocking_mode=NULL
+      - NIMBUS_dns_query_log=true
+      - NIMBUS_webserver_port=80o
+      - NIMBUS_dhcp_enabled=true
+      - NIMBUS_dhcp_pool_start=192.168.1.100
+      - NIMBUS_dhcp_pool_end=192.168.1.200
+      - NIMBUS_dhcp_router=192.168.1.1
+      - NIMBUS_dhcp_lease_time=86400
+      - NIMBUS_blocking_source_url=https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
+      - NIMBUS_blocking_refresh_interval=86400
 ```
 
 Save as `docker-compose.yml` and run:
@@ -100,4 +100,4 @@ docker build -t nimbusdns .
 
 ## License
 
-MIT
+[MIT](LICENSE)

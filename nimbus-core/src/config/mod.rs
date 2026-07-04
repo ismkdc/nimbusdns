@@ -3,7 +3,7 @@
 // =============================================================================
 // Supports:
 //   - /etc/nimbusdns/nimbus.toml (primary config file)
-//   - Environment variables (FTLCONF_*) override
+//   - Environment variables (NIMBUS_*) override
 //   - CLI arguments
 //   - Legacy /etc/nimbusdns/nimbus.conf (import on first run)
 
@@ -343,8 +343,8 @@ pub struct DatabaseConfig {
     pub gravity_db: PathBuf,
 
     /// Path to Query database
-    #[serde(default = "default_ftl_db")]
-    pub ftl_db: PathBuf,
+    #[serde(default = "default_nimbus_db")]
+    pub nimbus_db: PathBuf,
 
     /// Maximum number of queries stored
     #[serde(default = "default_max_queries_stored")]
@@ -565,14 +565,14 @@ fn default_api_rate_limit() -> u32 {
 }
 
 fn default_gravity_db() -> PathBuf {
-    std::env::var("FTLCONF_database_gravity_db")
+    std::env::var("NIMBUS_database_gravity_db")
         .ok()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/etc/nimbusdns/gravity.db"))
 }
 
-fn default_ftl_db() -> PathBuf {
-    std::env::var("FTLCONF_database_ftl_db")
+fn default_nimbus_db() -> PathBuf {
+    std::env::var("NIMBUS_database_nimbus_db")
         .ok()
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("/etc/nimbusdns/nimbusdns.db"))
@@ -607,7 +607,7 @@ fn default_true() -> bool {
 }
 
 fn default_pid_file() -> PathBuf {
-    std::env::var("FTLCONF_files_pid_file")
+    std::env::var("NIMBUS_files_pid_file")
         .ok()
         .map(PathBuf::from)
         .unwrap_or_else(|| {
@@ -623,7 +623,7 @@ fn default_pid_file() -> PathBuf {
 
 fn default_log_file() -> Option<PathBuf> {
     Some(
-        std::env::var("FTLCONF_files_log_file")
+        std::env::var("NIMBUS_files_log_file")
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| {
@@ -639,7 +639,7 @@ fn default_log_file() -> Option<PathBuf> {
 
 fn default_socket() -> Option<PathBuf> {
     Some(
-        std::env::var("FTLCONF_files_socket")
+        std::env::var("NIMBUS_files_socket")
             .ok()
             .map(PathBuf::from)
             .unwrap_or_else(|| {
@@ -660,7 +660,7 @@ fn default_setup_vars() -> Option<PathBuf> {
 // =============================================================================
 // Environment variable override logic
 // =============================================================================
-const ENV_PREFIX: &str = "FTLCONF_";
+const ENV_PREFIX: &str = "NIMBUS_";
 
 /// Load config from file and apply environment variable overrides
 impl Config {
@@ -681,7 +681,7 @@ impl Config {
         Ok(config)
     }
 
-    /// Override config values from FTLCONF_* environment variables
+    /// Override config values from NIMBUS_* environment variables
     fn apply_env_overrides(&mut self) -> Result<(), ConfigError> {
         for (key, value) in std::env::vars() {
             if let Some(inner) = key.strip_prefix(ENV_PREFIX) {
@@ -692,7 +692,7 @@ impl Config {
     }
 
     fn set_from_env(&mut self, key: &str, value: &str) -> Result<(), ConfigError> {
-        // Supports: FTLCONF_dns_upstreams, FTLCONF_dns_blocking_mode, etc.
+        // Supports: NIMBUS_dns_upstreams, NIMBUS_dns_blocking_mode, etc.
         // Maps to config.dns.upstreams, config.dns.blocking_mode, etc.
         let parts: Vec<&str> = key.split('_').collect();
         match parts.as_slice() {
@@ -842,7 +842,7 @@ impl Default for DatabaseConfig {
     fn default() -> Self {
         Self {
             gravity_db: default_gravity_db(),
-            ftl_db: default_ftl_db(),
+            nimbus_db: default_nimbus_db(),
             max_queries_stored: default_max_queries_stored(),
             analyze_interval: default_db_analyze_interval(),
             delete_interval: default_db_delete_interval(),

@@ -38,8 +38,8 @@ pub enum DatabaseError {
 pub struct Database {
     /// Gravity database connection (adlists, blocking rules)
     pub gravity: Arc<GravityDb>,
-    /// FTL query database (query log, network table, sessions)
-    pub ftl: Arc<QueryDb>,
+    /// NIMBUS query database (query log, network table, sessions)
+    pub nimbus_db: Arc<QueryDb>,
     /// Configuration reference
     #[allow(dead_code)]
     config: Arc<crate::config::DatabaseConfig>,
@@ -49,13 +49,13 @@ impl Database {
     /// Open (or create) all database files
     pub fn open(config: &crate::config::DatabaseConfig) -> Result<Self, DatabaseError> {
         let gravity = GravityDb::open(&config.gravity_db, config.busy_timeout)?;
-        let ftl = QueryDb::open(&config.ftl_db, config.busy_timeout)?;
+        let nimbus_db = QueryDb::open(&config.nimbus_db, config.busy_timeout)?;
 
         info!("Database connections established");
 
         Ok(Self {
             gravity: Arc::new(gravity),
-            ftl: Arc::new(ftl),
+            nimbus_db: Arc::new(nimbus_db),
             config: Arc::new(config.clone()),
         })
     }
@@ -68,14 +68,14 @@ impl Database {
 
     /// Compact/analyze the database (called periodically)
     pub fn analyze(&self) -> Result<(), DatabaseError> {
-        self.ftl.analyze()?;
+        self.nimbus.analyze()?;
         self.gravity.analyze()?;
         Ok(())
     }
 
     /// Delete old queries based on retention policy
     pub fn delete_old_queries(&self, max_age_secs: i64) -> Result<i64, DatabaseError> {
-        self.ftl.delete_old_queries(max_age_secs)
+        self.nimbus.delete_old_queries(max_age_secs)
     }
 }
 
@@ -167,7 +167,7 @@ pub fn run_migrations(conn: &Connection) -> Result<(), DatabaseError> {
 
     // Migration 1: Initial schema
     if current_version < 1 {
-        conn.execute_batch(schema::INITIAL_FTL_SCHEMA)?;
+        conn.execute_batch(schema::INITIAL_NIMBUS_SCHEMA)?;
         conn.execute("INSERT INTO schema_version (version) VALUES (1)", [])?;
         info!("Applied migration v1 (initial schema)");
     }
