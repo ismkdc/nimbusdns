@@ -62,7 +62,13 @@ docker compose up -d
 
 ## Configuration
 
-Edit `/etc/nimbusdns/nimbus.toml`:
+The same configuration file format works on all platforms. Place `nimbus.toml` next to the binary or at:
+
+- **Linux/macOS:** `/etc/nimbusdns/nimbus.toml`
+- **macOS (homebrew):** `$(brew --prefix)/etc/nimbusdns/nimbus.toml`
+- **Windows:** `%PROGRAMDATA%\nimbusdns\nimbus.toml`
+
+Example `nimbus.toml`:
 
 ```toml
 [dns]

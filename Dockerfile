@@ -9,12 +9,12 @@ WORKDIR /app
 COPY . .
 RUN cargo build --release --bin nimbusdns
 
-FROM debian:bookworm-slim AS libs
+FROM debian:trixie-slim AS libs
 RUN apt-get update && apt-get install -y --no-install-recommends \
     libsqlite3-0 libssl3 ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-FROM gcr.io/distroless/cc-debian12
+FROM gcr.io/distroless/cc-debian13
 COPY --from=libs /lib/x86_64-linux-gnu/libssl.so* /lib/x86_64-linux-gnu/
 COPY --from=libs /lib/x86_64-linux-gnu/libcrypto.so* /lib/x86_64-linux-gnu/
 COPY --from=libs /lib/x86_64-linux-gnu/libsqlite3.so* /lib/x86_64-linux-gnu/
