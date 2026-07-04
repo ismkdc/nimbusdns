@@ -177,4 +177,11 @@ CREATE VIEW IF NOT EXISTS vw_regex_denylist AS
     JOIN domainlist_by_group dbg ON d.id = dbg.domainlist_id
     JOIN group_table g ON dbg.group_id = g.id
     WHERE d.type = 3 AND g.enabled = 1;
+
+-- Ensure a default group exists (idempotent)
+INSERT OR IGNORE INTO group_table (id, name, description, enabled, date_added, date_modified)
+    VALUES (0, 'Default', 'The default group', 1, strftime('%s','now'), strftime('%s','now'));
+-- Link any orphan domainlist entries to the default group (idempotent)
+INSERT OR IGNORE INTO domainlist_by_group (domainlist_id, group_id)
+    SELECT id, 0 FROM domainlist;
 ";

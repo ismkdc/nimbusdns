@@ -488,12 +488,28 @@ async fn get_denylist(State(state): State<Arc<InternalState>>) -> Result<(Status
     }
 }
 
+/// Reload the blocking engine after list mutations (spawn_blocking for SQLite)
+fn reload_blocking(state: &InternalState) {
+    if let Some(ref engine) = state.app_state.blocking {
+        let engine = engine.clone();
+        let gravity = state.app_state.database.gravity.clone();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = engine.reload(&gravity) {
+                tracing::warn!("Blocking engine reload failed: {}", e);
+            }
+        });
+    }
+}
+
 async fn add_to_allowlist(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<AddDomainRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match state.app_state.database.gravity.add_domainlist(0, &body.domain, body.comment.as_deref()) {
-        Ok(id) => Ok(api_ok(serde_json::json!({"status": "added", "id": id}))),
+        Ok(id) => {
+            reload_blocking(&state);
+            Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
+        }
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
@@ -503,7 +519,10 @@ async fn add_to_denylist(
     Json(body): Json<AddDomainRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match state.app_state.database.gravity.add_domainlist(1, &body.domain, body.comment.as_deref()) {
-        Ok(id) => Ok(api_ok(serde_json::json!({"status": "added", "id": id}))),
+        Ok(id) => {
+            reload_blocking(&state);
+            Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
+        }
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
@@ -513,7 +532,10 @@ async fn remove_from_allowlist(
     Path(id): Path<i32>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match state.app_state.database.gravity.remove_domainlist(id) {
-        Ok(_) => Ok(api_ok(serde_json::json!({"status": "removed"}))),
+        Ok(_) => {
+            reload_blocking(&state);
+            Ok(api_ok(serde_json::json!({"status": "removed"})))
+        }
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
@@ -523,7 +545,10 @@ async fn remove_from_denylist(
     Path(id): Path<i32>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match state.app_state.database.gravity.remove_domainlist(id) {
-        Ok(_) => Ok(api_ok(serde_json::json!({"status": "removed"}))),
+        Ok(_) => {
+            reload_blocking(&state);
+            Ok(api_ok(serde_json::json!({"status": "removed"})))
+        }
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
@@ -1052,6 +1077,7 @@ async fn post_blocklist_add(
     }
     state.app_state.database.gravity.add_gravity_domain(domain)
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    reload_blocking(&state);
     Ok(api_ok(serde_json::json!({"status": "added", "domain": domain})))
 }
 
@@ -1062,6 +1088,7 @@ async fn delete_blocklist_entry(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     state.app_state.database.gravity.remove_gravity_domain(&domain)
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    reload_blocking(&state);
     Ok(api_ok(serde_json::json!({"status": "removed", "domain": domain})))
 }
 

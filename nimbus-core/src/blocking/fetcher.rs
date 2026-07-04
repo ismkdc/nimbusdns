@@ -25,16 +25,25 @@ pub fn start(
     source_url: String,
     refresh_interval: Duration,
     shutdown_rx: watch::Receiver<bool>,
+    blocking_engine: Option<Arc<crate::blocking::BlockingEngine>>,
 ) {
     tokio::spawn(async move {
         info!("Blocklist fetcher started (source: {})", source_url);
 
+        let do_fetch = || async {
+            if let Err(e) = fetch_and_import(&gravity, &source_url).await {
+                warn!("Blocklist fetch failed: {}", e);
+            } else if let Some(ref engine) = blocking_engine {
+                if let Err(e) = engine.reload(&gravity) {
+                    warn!("Blocking engine reload after fetch failed: {}", e);
+                }
+            }
+        };
+
         let domain_count = gravity.total_blocked().unwrap_or(0);
         if domain_count == 0 {
             info!("Gravity database is empty, fetching initial blocklist...");
-            if let Err(e) = fetch_and_import(&gravity, &source_url).await {
-                warn!("Initial blocklist fetch failed: {}", e);
-            }
+            do_fetch().await;
         } else {
             info!("Gravity database has {} domains, skipping initial fetch", domain_count);
         }
@@ -46,11 +55,7 @@ pub fn start(
             tokio::select! {
                 _ = interval.tick() => {
                     info!("Starting scheduled blocklist refresh...");
-                    if let Err(e) = fetch_and_import(&gravity, &source_url).await {
-                        warn!("Blocklist refresh failed: {}", e);
-                    } else {
-                        info!("Blocklist refresh completed");
-                    }
+                    do_fetch().await;
                 }
                 _ = rx.changed() => {
                     info!("Blocklist fetcher shutting down");

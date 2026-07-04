@@ -332,7 +332,13 @@ impl GravityDb {
                  VALUES (?1, ?2, 1, ?3, ?4, ?5)",
                 params![dtype, domain, now, now, comment],
             )?;
-            Ok(conn.last_insert_rowid() as i32)
+            let id = conn.last_insert_rowid();
+            // Link to default group (0) - required for JOIN queries to find this entry
+            conn.execute(
+                "INSERT OR IGNORE INTO domainlist_by_group (domainlist_id, group_id) VALUES (?1, 0)",
+                params![id],
+            )?;
+            Ok(id as i32)
         })
     }
 

@@ -166,7 +166,8 @@ impl BlockingLists {
 
     /// Check if a domain is blocked
     pub fn check_blocked(&self, domain: &str) -> BlockingDecision {
-        let domain_lower = domain.to_lowercase();
+        // Strip trailing dot (FQDN) and lowercase for consistent matching
+        let domain_lower = domain.trim_end_matches('.').to_lowercase();
 
         // 1. Check exact allowlist (fastest)
         if self.allowlist_exact.contains(&domain_lower) {

@@ -33,10 +33,13 @@ pub async fn start(
     let (cache_entries, bind_addr, upstream_count, dot_count, blocking) = {
         let config_guard = state.config.read();
         let dns = &config_guard.dns;
-        let blocking = Arc::new(
-            BlockingEngine::load(&state.database.gravity, &config_guard)
-                .map_err(|e| anyhow::anyhow!("Failed to load blocking lists: {}", e))?
-        );
+        // Use pre-loaded blocking engine from AppState if available,
+        // otherwise fall back to loading it here (first start)
+        let blocking = state.blocking.clone().unwrap_or_else(|| {
+            let engine = BlockingEngine::load(&state.database.gravity, &config_guard)
+                .expect("Failed to load blocking lists");
+            Arc::new(engine)
+        });
         info!("Blocking engine loaded ({} total blocked, mode: {:?})", 
               blocking.stats().total_blocked, blocking.mode());
         (dns.cache_size, dns.bind, dns.upstreams.len(),

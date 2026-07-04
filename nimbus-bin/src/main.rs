@@ -97,6 +97,17 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
         info!("DHCP server disabled");
     }
 
+    // Initialize blocking engine (loaded into AppState for live reload)
+    let blocking_engine = Arc::new(
+        nimbus_core::blocking::BlockingEngine::load(
+            &app_state.database.gravity,
+            &app_state.config.read(),
+        ).map_err(|e| anyhow::anyhow!("Failed to load blocking lists: {}", e))?,
+    );
+    info!("Blocking engine loaded ({} total blocked, mode: {:?})",
+        blocking_engine.stats().total_blocked, blocking_engine.mode());
+    app_state.blocking = Some(blocking_engine);
+
     let state = Arc::new(app_state);
     info!("Background database writer started");
 
@@ -111,6 +122,7 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
             url,
             interval,
             shutdown_rx.clone(),
+            state.blocking.clone(),
         );
     }
 
@@ -140,13 +152,13 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
                 }
             }
 
-            // Reload blocking lists from gravity DB
-            match reload_state.database.gravity.get_all_gravity_domains() {
-                Ok(_domains) => {
-                    info!("Blocking lists reloaded");
-                }
-                Err(e) => {
+            // Reload blocking lists from gravity DB into the running engine
+            if let Some(ref engine) = reload_state.blocking {
+                if let Err(e) = engine.reload(&reload_state.database.gravity) {
                     warn!("Failed to reload blocking lists: {}", e);
+                } else {
+                    info!("Blocking lists reloaded ({} total blocked)",
+                        engine.stats().total_blocked);
                 }
             }
         }

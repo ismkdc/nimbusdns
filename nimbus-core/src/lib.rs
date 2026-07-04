@@ -39,6 +39,8 @@ pub struct AppState {
     pub dhcp_server: Option<Arc<dhcp::DhcpServer>>,
     /// DHCP config (shared with running server for live toggle)
     pub dhcp_config: Option<Arc<parking_lot::RwLock<config::DhcpConfig>>>,
+    /// Blocking engine (None until initialized in main)
+    pub blocking: Option<Arc<blocking::BlockingEngine>>,
     /// Is the daemon running?
     pub running: AtomicBool,
 }
@@ -53,6 +55,7 @@ impl AppState {
             db_writer: None,
             dhcp_server: None,
             dhcp_config: None,
+            blocking: None,
             running: AtomicBool::new(true),
         }
     }
@@ -67,6 +70,7 @@ impl AppState {
             db_writer: None,
             dhcp_server: None,
             dhcp_config: None,
+            blocking: None,
             running: AtomicBool::new(true),
         }
     }
