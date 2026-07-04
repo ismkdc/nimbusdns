@@ -100,19 +100,11 @@ pub async fn start(
     });
 
     let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT);
-    let std_addr = std::net::SocketAddr::V4(bind_addr);
-    let socket = match socket2::Socket::new(
-        socket2::Domain::for_address(std_addr),
-        socket2::Type::DGRAM,
-        Some(socket2::Protocol::UDP),
-    ) {
-        Ok(s2) => {
-            let _ = s2.set_reuse_address(true);
-            let _ = s2.set_broadcast(true);
-            let _ = s2.bind(&socket2::SockAddr::from(std_addr));
-            let _ = s2.set_nonblocking(true);
+    let socket = match tokio::net::UdpSocket::bind(std::net::SocketAddr::V4(bind_addr)).await {
+        Ok(s) => {
+            let _ = s.set_broadcast(true);
             info!("DHCP server listening on {} (SO_REUSEADDR)", bind_addr);
-            Arc::new(tokio::net::UdpSocket::from_std(s2.into()).unwrap())
+            Arc::new(s)
         }
         Err(e) => { warn!("Cannot bind DHCP port {}: {}", SERVER_PORT, e); return None; }
     };
