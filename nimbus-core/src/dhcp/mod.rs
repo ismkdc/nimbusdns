@@ -183,16 +183,26 @@ async fn handle_dhcp_packet(
     match msg_type {
         MessageType::Discover => {
             let offered_ip = { server.pool.write().next_available() }; // drop guard before await
-            if let Some(ip) = offered_ip {
-                let response = build_offer(&msg, ip, &server);
-                if let Ok(bytes) = encode_message(&response) {
-                    let dest = std::net::SocketAddr::V4(
-                        SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
-                    );
-                    let _ = socket.send_to(&bytes, dest).await;
-                    debug!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            match offered_ip {
+                Some(ip) => {
+                    let response = build_offer(&msg, ip, &server);
+                    match encode_message(&response) {
+                        Ok(bytes) => {
+                            let dest = std::net::SocketAddr::V4(
+                                SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
+                            );
+                            if let Err(e) = socket.send_to(&bytes, dest).await {
+                                warn!("DHCP OFFER send error: {}", e);
+                            } else {
+                                info!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                                    ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                            }
+                        }
+                        Err(e) => warn!("DHCP encode OFFER error: {}", e),
+                    }
                 }
+                None => warn!("DHCP no available IP for {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
             }
         }
         MessageType::Request => {
