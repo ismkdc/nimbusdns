@@ -9,7 +9,7 @@ use hickory_proto::op::{
     Message, OpCode, ResponseCode,
 };
 use hickory_proto::rr::{RecordType, DNSClass, RData};
-use tracing::{error, debug, trace};
+use tracing::{warn, debug, trace};
 
 use crate::AppState;
 use crate::config::{BlockingMode, DnsUpstream};
@@ -169,7 +169,7 @@ impl QueryRouter {
             }
         }
 
-        error!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
+        warn!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
         self.log_query(id, &domain, qtype, &client_addr, 5, start.elapsed());
         make_error_response(id, ResponseCode::ServFail)
     }
