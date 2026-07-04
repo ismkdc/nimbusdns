@@ -200,7 +200,7 @@ impl QueryRouter {
                 }
             } else {
                 // Fallback: direct DB write (blocking)
-                if let Err(e) = self.state.database.nimbus.store_query(stored) {
+                if let Err(e) = self.state.database.nimbus_db.store_query(stored) {
                     debug!("Failed to store query: {}", e);
                 }
             }

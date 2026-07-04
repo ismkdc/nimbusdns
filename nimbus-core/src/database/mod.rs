@@ -68,14 +68,14 @@ impl Database {
 
     /// Compact/analyze the database (called periodically)
     pub fn analyze(&self) -> Result<(), DatabaseError> {
-        self.nimbus.analyze()?;
+        self.nimbus_db.analyze()?;
         self.gravity.analyze()?;
         Ok(())
     }
 
     /// Delete old queries based on retention policy
     pub fn delete_old_queries(&self, max_age_secs: i64) -> Result<i64, DatabaseError> {
-        self.nimbus.delete_old_queries(max_age_secs)
+        self.nimbus_db.delete_old_queries(max_age_secs)
     }
 }
 

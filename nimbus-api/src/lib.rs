@@ -188,13 +188,13 @@ pub async fn serve(
             tokio::select! {
                 _ = interval.tick() => {
                     // Clean expired sessions
-                    if let Err(e) = cleanup_state.database.nimbus.cleanup_expired_sessions() {
+                    if let Err(e) = cleanup_state.database.nimbus_db.cleanup_expired_sessions() {
                         tracing::warn!("Session cleanup error: {}", e);
                     }
                     // Delete old queries based on retention config
                     let retention = cleanup_state.config.read().dns.query_retention;
                     if retention > 0
-                        && let Err(e) = cleanup_state.database.nimbus.delete_old_queries(retention as i64) {
+                        && let Err(e) = cleanup_state.database.nimbus_db.delete_old_queries(retention as i64) {
                             tracing::warn!("Query retention cleanup error: {}", e);
                         }
                 }
@@ -347,7 +347,7 @@ where
                             return Ok(auth::AuthError::Unauthorized.into_response());
                         }
                     };
-                    if let Err(e) = auth::validate_session(&state.app_state.database.nimbus, &sid) {
+                    if let Err(e) = auth::validate_session(&state.app_state.database.nimbus_db, &sid) {
                         return Ok(e.into_response());
                     }
                 }
@@ -363,7 +363,7 @@ where
 // =============================================================================
 
 async fn get_stats(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
-    let stats = match state.app_state.database.nimbus.get_stats() {
+    let stats = match state.app_state.database.nimbus_db.get_stats() {
         Ok(s) => s,
         Err(e) => return api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
     };
@@ -397,35 +397,35 @@ async fn get_stats_summary(State(state): State<Arc<InternalState>>) -> (StatusCo
 }
 
 async fn get_top_clients(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus.get_top_clients(10) {
+    match state.app_state.database.nimbus_db.get_top_clients(10) {
         Ok(items) => Ok(api_ok(items)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
 
 async fn get_top_domains(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus.get_top_domains(10) {
+    match state.app_state.database.nimbus_db.get_top_domains(10) {
         Ok(items) => Ok(api_ok(items)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
 
 async fn get_top_upstreams(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus.get_top_upstreams(10) {
+    match state.app_state.database.nimbus_db.get_top_upstreams(10) {
         Ok(items) => Ok(api_ok(items)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
 
 async fn get_query_types(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus.get_query_type_distribution() {
+    match state.app_state.database.nimbus_db.get_query_type_distribution() {
         Ok(items) => Ok(api_ok(items)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
 }
 
 async fn get_recent_blocked(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus.get_recent_blocked(20) {
+    match state.app_state.database.nimbus_db.get_recent_blocked(20) {
         Ok(items) => Ok(api_ok(items)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
@@ -604,7 +604,7 @@ async fn get_queries(
         offset: params.offset.unwrap_or(0).max(0),
     };
 
-    match state.app_state.database.nimbus.get_queries(&filter) {
+    match state.app_state.database.nimbus_db.get_queries(&filter) {
         Ok((entries, total)) => Ok(api_ok(serde_json::json!({
             "entries": entries,
             "total": total,
@@ -631,11 +631,11 @@ async fn get_queries_suggestions(
     let limit = 10;
 
     match field {
-        "domain" => match state.app_state.database.nimbus.get_domain_suggestions(&query, limit) {
+        "domain" => match state.app_state.database.nimbus_db.get_domain_suggestions(&query, limit) {
             Ok(items) => Ok(api_ok(items)),
             Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
         },
-        "client" => match state.app_state.database.nimbus.get_client_suggestions(&query, limit) {
+        "client" => match state.app_state.database.nimbus_db.get_client_suggestions(&query, limit) {
             Ok(items) => Ok(api_ok(items)),
             Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
         },
@@ -652,7 +652,7 @@ async fn get_history(
         return Ok(api_ok(slots));
     }
     // Fallback to DB query if overTime is empty (e.g., fresh start)
-    match state.app_state.database.nimbus.get_query_history() {
+    match state.app_state.database.nimbus_db.get_query_history() {
         Ok(slots) => Ok(api_ok(slots)),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
     }
@@ -788,7 +788,7 @@ async fn authenticate(
 
     // Create session (minimum 60 seconds)
     let timeout = state.app_state.config.read().webserver.session_timeout.max(60);
-    let sid = auth::create_session(&state.app_state.database.nimbus, Some(&client_ip), None, timeout)?;
+    let sid = auth::create_session(&state.app_state.database.nimbus_db, Some(&client_ip), None, timeout)?;
 
     // Clear rate limit on success
     state.auth_rate_limiter.record_success(&client_ip);
@@ -811,10 +811,10 @@ async fn delete_session(
         .ok_or(auth::AuthError::Unauthorized)?;
 
     // Validate the session (also touches last_used_at)
-    auth::validate_session(&state.app_state.database.nimbus, &sid)?;
+    auth::validate_session(&state.app_state.database.nimbus_db, &sid)?;
 
     // Delete the session
-    state.app_state.database.nimbus.delete_session(&sid)?;
+    state.app_state.database.nimbus_db.delete_session(&sid)?;
 
     Ok(api_ok(serde_json::json!({"status": "logged_out"})))
 }

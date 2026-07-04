@@ -82,7 +82,7 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
     // Start background database writer + DHCP server (before wrapping in Arc)
     let mut app_state = AppState::with_config_path(cfg, db, args.config.clone());
     let writer = database::writer::start(
-        app_state.database.nimbus.clone(),
+        app_state.database.nimbus_db.clone(),
         shutdown_rx.clone(),
     );
     app_state.db_writer = Some(writer);
