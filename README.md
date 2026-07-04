@@ -13,7 +13,7 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 
 ## Screenshots
 
-![Dashboard](ss1.jpg) | ![Settings & DHCP](ss2.jpg)
+![Dashboard](ss1.jpg)  ![Settings & DHCP](ss2.jpg)
 
 ## Quick Start
 
