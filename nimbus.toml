@@ -1,7 +1,7 @@
 [dns]
 upstreams = [
   {Tls = {address = "8.8.8.8", port = 853, hostname = "dns.google"}},
-  {Tls = {address = "1.1.1.1", port = 853, hostname = "cloudflare-dns.com"}},
+  {Tls = {address = "8.8.4.4", port = 853, hostname = "dns.google"}},
 ]
 bind = "0.0.0.0:53"
 blocking-mode = "NULL"
