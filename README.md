@@ -13,6 +13,8 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 
 ## Quick Start
 
+### Docker
+
 ```bash
 docker pull ismkdc/nimbusdns:latest
 
@@ -21,6 +23,29 @@ docker run -d --name nimbusdns --restart unless-stopped --network host \
   -v /var/lib/nimbusdns:/tmp \
   --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE \
   ismkdc/nimbusdns:latest
+```
+
+### Docker Compose
+
+```yaml
+services:
+  nimbusdns:
+    image: ismkdc/nimbusdns:latest
+    container_name: nimbusdns
+    restart: unless-stopped
+    network_mode: "host"
+    cap_add:
+      - NET_ADMIN
+      - NET_BIND_SERVICE
+    volumes:
+      - /etc/nimbusdns:/etc/nimbusdns
+      - /var/lib/nimbusdns:/tmp
+```
+
+Save as `docker-compose.yml` and run:
+
+```bash
+docker compose up -d
 ```
 
 Open http://localhost:80 to access the web panel.

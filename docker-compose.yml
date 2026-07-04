@@ -1,35 +1,14 @@
-version: "3.9"
-
 services:
-  # --- Development ---------------------------------------------------
-  ftldot-dev:
-    build:
-      context: .
-      dockerfile: Dockerfile.dev
-    container_name: ftldot-dev
+  nimbusdns:
+    image: ismkdc/nimbusdns:latest
+    container_name: nimbusdns
+    restart: unless-stopped
     network_mode: "host"
     cap_add:
       - NET_ADMIN
       - NET_BIND_SERVICE
-      - NET_RAW
-      - SYS_NICE
-      - SYS_TIME
     volumes:
-      - .:/app
-      - cargo-cache:/usr/local/cargo/registry
-      - cargo-target:/app/target
+      - /etc/nimbusdns:/etc/nimbusdns
+      - /var/lib/nimbusdns:/tmp
     environment:
-      - RUST_LOG=info,ftldot=debug
-      - FTLCONF_dns_upstreams=tls://8.8.8.8#853#dns.google;tls://1.1.1.1#853#cloudflare-dns.com
-      - FTLCONF_webserver_port=80o,443os
-      - FTLCONF_dns_blocking_mode=NULL
-      - RUST_BACKTRACE=1
-    working_dir: /app
-    stdin_open: true
-    tty: true
-    # Keep container alive, user exec's into it
-    command: ["sleep", "infinity"]
-
-volumes:
-  cargo-cache:
-  cargo-target:
+      - TZ=UTC
