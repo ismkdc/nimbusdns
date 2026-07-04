@@ -9,8 +9,8 @@ query-retention = 2592000
 ports = ["80o"]
 
 [database]
-gravity-db = "/tmp/gravity.db"
-nimbus-db = "/tmp/nimbus.db"
+gravity-db = "/var/lib/nimbusdns/gravity.db"
+nimbus-db = "/var/lib/nimbusdns/nimbus.db"
 
 [blocking]
 source-url = "https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts"
@@ -25,4 +25,4 @@ dns-server = "8.8.8.8"
 lease-time = 86400
 
 [files]
-pid-file = "/tmp/nimbusdns.pid"
+pid-file = "/var/run/nimbusdns.pid"

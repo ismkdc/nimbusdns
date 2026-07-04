@@ -19,8 +19,8 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 docker pull ismkdc/nimbusdns:latest
 
 docker run -d --name nimbusdns --restart unless-stopped --network host \
-  -v /etc/nimbusdns:/etc/nimbusdns \
-  -v /var/lib/nimbusdns:/tmp \
+  -v /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro \
+  -v nimbusdns-data:/var/lib/nimbusdns \
   --cap-add NET_ADMIN --cap-add NET_BIND_SERVICE \
   ismkdc/nimbusdns:latest
 ```
@@ -38,7 +38,7 @@ services:
       - NET_ADMIN
       - NET_BIND_SERVICE
     volumes:
-      - /var/lib/nimbusdns:/tmp
+      - nimbusdns-data:/var/lib/nimbusdns
     environment:
       - NIMBUS_dns_upstreams=tls://8.8.8.8#853#dns.google
       - NIMBUS_dns_bind=0.0.0.0:53
@@ -52,6 +52,11 @@ services:
       - NIMBUS_dhcp_lease_time=86400
       - NIMBUS_blocking_source_url=https://raw.githubusercontent.com/StevenBlack/hosts/master/hosts
       - NIMBUS_blocking_refresh_interval=86400
+    volumes:
+      - nimbusdns-data:/var/lib/nimbusdns
+
+volumes:
+  nimbusdns-data:
 ```
 
 Save as `docker-compose.yml` and run:

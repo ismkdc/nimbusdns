@@ -8,7 +8,11 @@ services:
       - NET_ADMIN
       - NET_BIND_SERVICE
     volumes:
-      - /var/lib/nimbusdns:/tmp
+      - nimbusdns-data:/var/lib/nimbusdns
+      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro
+
+volumes:
+  nimbusdns-data:
     environment:
       # ── DNS ──────────────────────────────────────────
       - NIMBUS_dns_upstreams=tls://8.8.8.8#853#dns.google
