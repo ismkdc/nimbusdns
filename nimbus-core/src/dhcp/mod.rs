@@ -158,12 +158,18 @@ async fn handle_dhcp_packet(
     let mut decoder = dhcproto::Decoder::new(&data);
     let msg = match Message::decode(&mut decoder) {
         Ok(m) => m,
-        Err(_) => return,
+        Err(e) => {
+            warn!("DHCP failed to decode message: {:?}", e);
+            return;
+        }
     };
 
     let msg_type = match msg.opts().get(dhcproto::v4::OptionCode::MessageType) {
         Some(dhcproto::v4::DhcpOption::MessageType(mt)) => *mt,
-        _ => return,
+        _ => {
+            warn!("DHCP message missing MessageType option");
+            return;
+        }
     };
 
     let chaddr = msg.chaddr();
