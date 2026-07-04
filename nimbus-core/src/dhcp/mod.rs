@@ -6,12 +6,16 @@
 // IP pool management with in-memory lease storage.
 
 use std::collections::HashMap;
+use std::io::{self, IoSlice};
 use std::net::{Ipv4Addr, SocketAddrV4};
+use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
 use dhcproto::v4::{DhcpOptions, Message, MessageType, Opcode};
 use dhcproto::{Decodable, Encoder, Encodable};
+use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags, SockaddrIn};
 use parking_lot::RwLock;
+use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::UdpSocket;
 use tokio::sync::watch;
 use tracing::{debug, info, warn};
@@ -20,6 +24,66 @@ use crate::config::DhcpConfig;
 
 const SERVER_PORT: u16 = 67;
 const CLIENT_PORT: u16 = 68;
+
+/// Resolve interface name to kernel index (0 = auto).
+fn resolve_ifindex(name: &Option<String>) -> u32 {
+    name.as_ref().and_then(|n| {
+        let c = std::ffi::CString::new(n.as_str()).ok()?;
+        let idx = unsafe { libc::if_nametoindex(c.as_ptr()) };
+        if idx == 0 { None } else { Some(idx) }
+    }).unwrap_or(0)
+}
+
+/// Enable IP_PKTINFO on a socket so sendmsg can set source IP per packet.
+fn enable_ip_pktinfo(fd: std::os::fd::RawFd) -> io::Result<()> {
+    let enable: libc::c_int = 1;
+    let r = unsafe {
+        libc::setsockopt(
+            fd, libc::IPPROTO_IP, libc::IP_PKTINFO,
+            &enable as *const _ as *const libc::c_void,
+            std::mem::size_of::<libc::c_int>() as libc::socklen_t,
+        )
+    };
+    if r != 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
+}
+
+/// Send a DHCP datagram with explicit source IP (via IP_PKTINFO) so
+/// the IP header source matches ServerIdentifier for iOS compatibility.
+fn send_dhcp_pktinfo(
+    fd: std::os::fd::RawFd, bytes: &[u8],
+    dest: SocketAddrV4, src_ip: Ipv4Addr, ifindex: u32,
+) -> io::Result<usize> {
+    let mut pktinfo: libc::in_pktinfo = unsafe { std::mem::zeroed() };
+    pktinfo.ipi_ifindex = ifindex;
+    pktinfo.ipi_spec_dst = libc::in_addr {
+        s_addr: u32::from_ne_bytes(src_ip.octets()),
+    };
+    let iov = [IoSlice::new(bytes)];
+    let cmsgs = [ControlMessage::Ipv4PacketInfo(&pktinfo)];
+    let dest_addr = SockaddrIn::from(dest);
+    match sendmsg::<SockaddrIn>(fd, &iov, &cmsgs, MsgFlags::empty(), Some(&dest_addr)) {
+        Ok(n) => Ok(n),
+        Err(nix::errno::Errno::EAGAIN) => Err(io::ErrorKind::WouldBlock.into()),
+        Err(e) => Err(io::Error::from_raw_os_error(e as i32)),
+    }
+}
+
+/// Async wrapper for send_dhcp_pktinfo with retry on EAGAIN.
+async fn send_dhcp(
+    socket: &UdpSocket, bytes: &[u8],
+    dest: SocketAddrV4, src_ip: Ipv4Addr, ifindex: u32,
+) -> io::Result<usize> {
+    let fd = socket.as_raw_fd();
+    loop {
+        match send_dhcp_pktinfo(fd, bytes, dest, src_ip, ifindex) {
+            Ok(n) => return Ok(n),
+            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
+                socket.writable().await?;
+            }
+            Err(e) => return Err(e),
+        }
+    }
+}
 
 /// A DHCP lease entry
 #[derive(Debug, Clone, serde::Serialize)]
@@ -93,14 +157,14 @@ pub async fn start(
 
     info!("DHCP server starting: pool {} - {}", pool_start, pool_end);
 
-    // Read the router/server IP for binding - this must match ServerIdentifier
-    let server_ip = {
+    // Source IP for responses (must match ServerIdentifier option for iOS)
+    let (src_ip, ifindex) = {
         let cfg = config.read();
-        cfg.router.unwrap_or_else(|| {
-            // Default router IP if not configured
-            Ipv4Addr::new(192, 168, 1, 1)
-        })
+        let ip = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+        let idx = resolve_ifindex(&cfg.interface);
+        (ip, idx)
     };
+    info!("DHCP server starting: src_ip={}, ifindex={}", src_ip, ifindex);
 
     let server = Arc::new(DhcpServer {
         config,
@@ -108,21 +172,41 @@ pub async fn start(
         pool: Arc::new(RwLock::new(IpPool::new(pool_start, pool_end))),
     });
 
-    // Bind to the specific LAN IP so that OFFER/ACK source IP matches ServerIdentifier
-    let bind_addr = SocketAddrV4::new(server_ip, SERVER_PORT);
-    let socket = match tokio::net::UdpSocket::bind(std::net::SocketAddr::V4(bind_addr)).await {
-        Ok(s) => {
-            let _ = s.set_broadcast(true);
-            info!("DHCP server listening on {} (SO_REUSEADDR)", bind_addr);
-            Arc::new(s)
+    // Socket: create via socket2 for full option control, then convert to tokio.
+    let socket = {
+        let sock = match Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) {
+            Ok(s) => s,
+            Err(e) => { warn!("DHCP socket create: {}", e); return None; }
+        };
+        let _ = sock.set_reuse_address(true);
+        let _ = sock.set_broadcast(true);
+        if let Err(e) = sock.set_nonblocking(true) {
+            warn!("DHCP set_nonblocking: {}", e); return None;
         }
-        Err(e) => { warn!("Cannot bind DHCP port {}: {}", SERVER_PORT, e); return None; }
+        let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT);
+        if let Err(e) = sock.bind(&SockAddr::from(bind_addr)) {
+            warn!("DHCP bind {}: {}", bind_addr, e); return None;
+        }
+        // Enable IP_PKTINFO so sendmsg can set source IP per-packet
+        let std_sock: std::net::UdpSocket = sock.into();
+        if let Err(e) = enable_ip_pktinfo(std_sock.as_raw_fd()) {
+            warn!("DHCP IP_PKTINFO: {}", e); return None;
+        }
+        match tokio::net::UdpSocket::from_std(std_sock) {
+            Ok(s) => {
+                info!("DHCP listening on 0.0.0.0:{} (IP_PKTINFO, src={})", SERVER_PORT, src_ip);
+                Arc::new(s)
+            }
+            Err(e) => { warn!("DHCP from_std: {}", e); return None; }
+        }
     };
 
     let mut buf = vec![0u8; 1024];
     let mut shutdown = shutdown_rx;
     let svr = server.clone();
     let cfg_check = server.config.clone();
+    let src_ip_h = src_ip;
+    let ifindex_h = ifindex;
 
     tokio::spawn(async move {
         let mut check = tokio::time::interval(tokio::time::Duration::from_secs(10));
@@ -134,7 +218,7 @@ pub async fn start(
                         let s = svr.clone();
                         let sock = socket.clone();
                         tokio::spawn(async move {
-                            handle_dhcp_packet(s, sock, data, src).await;
+                            handle_dhcp_packet(s, sock, data, src, src_ip_h, ifindex_h).await;
                         });
                     }
                 }
@@ -160,6 +244,8 @@ async fn handle_dhcp_packet(
     socket: Arc<UdpSocket>,
     data: Vec<u8>,
     _src: std::net::SocketAddr,
+    src_ip: Ipv4Addr,
+    ifindex: u32,
 ) {
     let mut decoder = dhcproto::Decoder::new(&data);
     let msg = match Message::decode(&mut decoder) {
@@ -190,10 +276,8 @@ async fn handle_dhcp_packet(
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
                         Ok(bytes) => {
-                            let dest = std::net::SocketAddr::V4(
-                                SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
-                            );
-                            if let Err(e) = socket.send_to(&bytes, dest).await {
+                            let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
+                            if let Err(e) = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await {
                                 warn!("DHCP OFFER send error: {}", e);
                             } else {
                                 info!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
@@ -238,17 +322,16 @@ async fn handle_dhcp_packet(
                 if let Ok(bytes) = encode_message(&response) {
                     // Renewal ACK goes to ciaddr (unicast), initial ACK is broadcast
                     let dest = if msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
-                        std::net::SocketAddr::V4(
-                            SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
-                        )
+                        SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
                     } else {
-                        std::net::SocketAddr::V4(
-                            SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
-                        )
+                        SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
                     };
-                    let _ = socket.send_to(&bytes, dest).await;
-                    info!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    if let Err(e) = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await {
+                        warn!("DHCP ACK send error: {}", e);
+                    } else {
+                        info!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                            ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    }
                 }
             }
         }
