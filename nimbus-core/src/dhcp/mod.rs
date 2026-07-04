@@ -26,7 +26,8 @@ const SERVER_PORT: u16 = 67;
 const CLIENT_PORT: u16 = 68;
 
 /// Resolve interface name to kernel index (0 = auto).
-fn resolve_ifindex(name: &Option<String>) -> u32 {
+/// Returns libc::c_uint which matches if_nametoindex return type.
+fn resolve_ifindex(name: &Option<String>) -> libc::c_uint {
     name.as_ref().and_then(|n| {
         let c = std::ffi::CString::new(n.as_str()).ok()?;
         let idx = unsafe { libc::if_nametoindex(c.as_ptr()) };
@@ -54,7 +55,7 @@ fn send_dhcp_pktinfo(
     dest: SocketAddrV4, src_ip: Ipv4Addr, ifindex: u32,
 ) -> io::Result<usize> {
     let mut pktinfo: libc::in_pktinfo = unsafe { std::mem::zeroed() };
-    pktinfo.ipi_ifindex = ifindex;
+    pktinfo.ipi_ifindex = ifindex as _;
     pktinfo.ipi_spec_dst = libc::in_addr {
         s_addr: u32::from_ne_bytes(src_ip.octets()),
     };
