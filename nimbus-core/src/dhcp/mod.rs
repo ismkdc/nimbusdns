@@ -390,8 +390,10 @@ async fn handle_dhcp_packet(
 
                 let response = build_ack(&msg, ip, &server);
                 if let Ok(bytes) = encode_message(&response) {
-                    // Renewal ACK goes to ciaddr (unicast), initial ACK is broadcast
-                    let dest = if msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
+                    // If client set broadcast flag, always broadcast regardless of ciaddr
+                    let flags = msg.flags();
+                    let broadcast_flag = flags.0 & 0x8000 != 0;
+                    let dest = if !broadcast_flag && msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
                         SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
                     } else {
                         SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
@@ -411,6 +413,18 @@ async fn handle_dhcp_packet(
                 server.pool.write().release(ciaddr);
                 server.leases.write().remove(&mac);
                 debug!("DHCP RELEASE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
+                    ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            }
+        }
+        MessageType::Decline => {
+            // Windows sends DECLINE when ARP probe finds a conflict
+            // Release the IP so it can be reassigned to a different client
+            let ciaddr = msg.ciaddr();
+            if ciaddr != Ipv4Addr::UNSPECIFIED {
+                server.pool.write().release(ciaddr);
+                server.leases.write().remove(&mac);
+                server.offered.write().remove(&u32::from(ciaddr));
+                info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                     ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             }
         }
@@ -481,6 +495,8 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     // Always send Router option (use sid as fallback)
     opts.insert(dhcproto::v4::DhcpOption::Router(vec![cfg.router.unwrap_or(sid)]));
     opts.insert(dhcproto::v4::DhcpOption::AddressLeaseTime(cfg.lease_time));
+    opts.insert(dhcproto::v4::DhcpOption::Renewal(cfg.lease_time / 2));
+    opts.insert(dhcproto::v4::DhcpOption::Rebinding((cfg.lease_time * 3) / 4));
     if let Some(ref domain) = cfg.domain {
         opts.insert(dhcproto::v4::DhcpOption::DomainName(domain.clone()));
     }
