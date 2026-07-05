@@ -925,13 +925,15 @@ async fn update_config(
             *dhcp_cfg.write() = new_config.dhcp.clone();
         }
 
-    // If query-logging is being disabled, purge all existing query logs
+    // If query-logging is being disabled, purge ALL existing query logs
     if !new_config.dns.query_log {
         let db = state.app_state.database.nimbus_db.clone();
-        let now = chrono::Utc::now().timestamp();
         tokio::task::spawn_blocking(move || {
-            if let Err(e) = db.delete_old_queries(now) {
+            // max_age_secs=0 → cutoff = now - 0 = now → delete everything older than now (all)
+            if let Err(e) = db.delete_old_queries(0) {
                 tracing::warn!("Failed to purge query logs: {}", e);
+            } else {
+                tracing::info!("Query logs purged (logging disabled)");
             }
         });
     }
