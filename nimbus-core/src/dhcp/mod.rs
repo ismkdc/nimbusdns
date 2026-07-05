@@ -391,8 +391,8 @@ async fn handle_dhcp_packet(
                 let response = build_ack(&msg, ip, &server);
                 if let Ok(bytes) = encode_message(&response) {
                     // If client set broadcast flag, always broadcast regardless of ciaddr
-                    let flags = msg.flags();
-                    let broadcast_flag = flags.0 & 0x8000 != 0;
+                    let flags: u16 = msg.flags().into();
+                    let broadcast_flag = flags & 0x8000 != 0;
                     let dest = if !broadcast_flag && msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
                         SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
                     } else {
