@@ -83,7 +83,9 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: nimbusdns-${{ matrix.suffix }}
-          path: nimbusdns-${{ matrix.suffix }}.*
+          path: |
+            nimbusdns-${{ matrix.suffix }}.tar.gz
+            nimbusdns-${{ matrix.suffix }}.zip
           if-no-files-found: error
 
   # -- Build & push Docker image per arch (native, no QEMU) ------------
@@ -186,16 +188,24 @@ jobs:
           echo "| Platform | File |" >> notes.md
           echo "|----------|------|" >> notes.md
           for dir in artifacts/*/; do
-            file=$(ls "$dir" | head -1)
             case "$dir" in
-              *macos-arm64*) platform="🍎 macOS Apple Silicon" ;;
-              *macos-x64*)   platform="🍎 macOS Intel" ;;
-
-              *linux-arm64*)   platform="🐧 Linux ARM64" ;;
-              *linux-x64*)     platform="🐧 Linux x64" ;;
-              *)              platform="📦 Other" ;;
+              *macos-arm64*) 
+                file=$(ls "$dir" | grep -v '.dockerbuild' | head -1)
+                echo "| 🍎 macOS Apple Silicon | [$file](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$file) |" >> notes.md
+                ;;
+              *macos-x64*)
+                file=$(ls "$dir" | grep -v '.dockerbuild' | head -1)
+                echo "| 🍎 macOS Intel | [$file](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$file) |" >> notes.md
+                ;;
+              *linux-arm64*)
+                file=$(ls "$dir" | grep -v '.dockerbuild' | head -1)
+                echo "| 🐧 Linux ARM64 | [$file](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$file) |" >> notes.md
+                ;;
+              *linux-x64*)
+                file=$(ls "$dir" | grep -v '.dockerbuild' | head -1)
+                echo "| 🐧 Linux x64 | [$file](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$file) |" >> notes.md
+                ;;
             esac
-            echo "| $platform | [$file](https://github.com/${{ github.repository }}/releases/download/${{ github.ref_name }}/$file) |" >> notes.md
           done
           echo "" >> notes.md
           echo "---" >> notes.md
@@ -210,7 +220,7 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: notes.md
-          files: artifacts/**/*
+          files: artifacts/**/*.tar.gz,artifacts/**/*.zip
           generate_release_notes: false
           draft: false
           prerelease: false
