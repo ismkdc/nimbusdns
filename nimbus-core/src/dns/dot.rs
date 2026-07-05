@@ -12,7 +12,6 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
-use bytes::Bytes;
 use parking_lot::Mutex;
 use rustls::pki_types::ServerName;
 use rustls::ClientConfig;

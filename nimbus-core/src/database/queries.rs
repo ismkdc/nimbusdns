@@ -105,7 +105,7 @@ impl QueryDb {
                         query.query_type,
                         query.status as i32,
                         query.reply_time,
-                        query.reply_type as i32,
+                        { query.reply_type },
                         query.flags,
                         query.interface,
                         query.elapsed_ms,

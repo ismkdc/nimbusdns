@@ -97,11 +97,10 @@ async fn process_udp_query(
         QueryResult::Response(mut bytes) => {
             // Truncate if response exceeds UDP max payload (only for UDP)
             let msg = Message::from_vec(&bytes).ok();
-            if let Some(ref msg) = msg {
-                if let Some(truncated) = truncate_if_needed(msg) {
+            if let Some(ref msg) = msg
+                && let Some(truncated) = truncate_if_needed(msg) {
                     bytes = truncated;
                 }
-            }
             socket.send_to(&bytes, src).await?;
         }
         QueryResult::ServerFailure => {

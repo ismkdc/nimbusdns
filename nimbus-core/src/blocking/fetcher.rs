@@ -33,11 +33,10 @@ pub fn start(
         let do_fetch = || async {
             if let Err(e) = fetch_and_import(&gravity, &source_url).await {
                 warn!("Blocklist fetch failed: {}", e);
-            } else if let Some(ref engine) = blocking_engine {
-                if let Err(e) = engine.reload(&gravity) {
+            } else if let Some(ref engine) = blocking_engine
+                && let Err(e) = engine.reload(&gravity) {
                     warn!("Blocking engine reload after fetch failed: {}", e);
                 }
-            }
         };
 
         let domain_count = gravity.total_blocked().unwrap_or(0);

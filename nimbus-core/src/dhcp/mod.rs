@@ -141,6 +141,7 @@ impl IpPool {
     fn release(&mut self, ip: Ipv4Addr) {
         self.allocated.remove(&u32::from(ip));
     }
+    #[allow(dead_code)]
     fn is_allocated(&self, ip: Ipv4Addr) -> bool {
         self.allocated.contains(&u32::from(ip))
     }

@@ -126,7 +126,7 @@ impl DnsCache {
             let mut oldest: Option<(CacheKey, Instant)> = None;
             for e in self.entries.iter() {
                 let ca = e.value().cached_at;
-                if oldest.as_ref().map_or(true, |(_, oa)| ca < *oa) {
+                if oldest.as_ref().is_none_or(|(_, oa)| ca < *oa) {
                     oldest = Some((e.key().clone(), ca));
                 }
             }

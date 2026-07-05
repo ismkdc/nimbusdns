@@ -260,7 +260,6 @@ impl AuthRateLimiter {
 #[derive(Debug, Deserialize)]
 pub struct AuthRequest {
     pub password: Option<String>,
-    pub totp: Option<String>,
 }
 
 /// Session response returned on successful auth
