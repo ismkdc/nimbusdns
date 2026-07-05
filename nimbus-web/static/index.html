@@ -424,7 +424,7 @@ async function loadDashboard() {
       api('/api/stats/top_domains'), api('/api/info/system').catch(()=>({}))
     ]);
     const memMB = sys.memory_bytes ? (sys.memory_bytes / 1048576).toFixed(0) : '?';
-    const cpuSec = sys.cpu_usec ? (sys.cpu_usec / 1000000).toFixed(1) : '?';
+    const cpuPct = sys.cpu_percent != null ? sys.cpu_percent.toFixed(1) + '%' : '?';
     document.getElementById('dash-cards').innerHTML = `
       <div class="card"><div class="label">📥 Total</div><div class="value">${stats.total_queries}</div></div>
       <div class="card"><div class="label">🔴 Blocked</div><div class="value red">${stats.blocked_queries}<span style="font-size:0.5em;display:block;color:#4a5a7a">${stats.percent_blocked.toFixed(1)}%</span></div></div>
@@ -433,7 +433,7 @@ async function loadDashboard() {
       <div class="card"><div class="label">⚡ QPS</div><div class="value">${stats.query_per_second.toFixed(1)}</div></div>
       <div class="card"><div class="label">⏱ Uptime</div><div class="value">${Math.floor(stats.uptime_seconds/86400)}d ${Math.floor((stats.uptime_seconds%86400)/3600)}h</div></div>
       <div class="card"><div class="label">🧠 RAM</div><div class="value">${memMB} MB</div></div>
-      <div class="card"><div class="label">⚙️ CPU</div><div class="value green">${cpuSec}s</div></div>
+      <div class="card"><div class="label">⚙️ CPU</div><div class="value green">${cpuPct}</div></div>
     `;
     document.getElementById('dash-clients').innerHTML = (clients||[]).map(c => `<tr><td>${c.name}</td><td>${c.count}</td></tr>`).join('');
     document.getElementById('dash-domains').innerHTML = (domains||[]).map(d => `<tr><td>${d.name}</td><td>${d.count}</td></tr>`).join('');

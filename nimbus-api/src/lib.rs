@@ -726,22 +726,27 @@ async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
                 .and_then(|s| s.trim().parse::<u64>().ok())
         });
 
-    // Container CPU: cgroup v2 cpu.stat → usage_usec
-    let cpu_usec = std::fs::read_to_string("/sys/fs/cgroup/cpu.stat").ok()
-        .and_then(|s| {
-            s.lines().find(|l| l.starts_with("usage_usec"))
-                .and_then(|l| l.split_whitespace().nth(1))
-                .and_then(|v| v.parse::<u64>().ok())
-        })
-        .or_else(|| {
-            std::fs::read_to_string("/sys/fs/cgroup/cpuacct/cpuacct_usage").ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-        });
+    // Container CPU percentage: sample cpu_usec twice with 200ms gap
+    let cpu_pct = || -> Option<f64> {
+        let read_cpu = || -> Option<u64> {
+            let s = std::fs::read_to_string("/sys/fs/cgroup/cpu.stat").ok()?;
+            s.lines()
+                .find(|l| l.starts_with("usage_usec"))?
+                .split_whitespace().nth(1)?
+                .parse::<u64>().ok()
+        };
+        let u1 = read_cpu()?;
+        std::thread::sleep(std::time::Duration::from_millis(200));
+        let u2 = read_cpu()?;
+        let dt = 200_000.0; // 200ms in microseconds
+        let du = (u2 - u1) as f64;
+        Some((du / dt * 100.0).clamp(0.0, 100.0))
+    }();
 
     api_ok(serde_json::json!({
         "memory_bytes": mem_bytes,
         "memory_limit_bytes": mem_limit,
-        "cpu_usec": cpu_usec,
+        "cpu_percent": cpu_pct,
     }))
 }
 
