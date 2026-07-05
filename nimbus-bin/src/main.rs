@@ -90,7 +90,7 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
     // Start DHCP server and store handle in AppState
     let dhcp_config = Arc::new(parking_lot::RwLock::new(app_state.config.read().dhcp.clone()));
     app_state.dhcp_config = Some(dhcp_config.clone());
-    if let Some(server) = nimbus_core::dhcp::start(dhcp_config, shutdown_rx.clone()).await {
+    if let Some(server) = nimbus_core::dhcp::start(dhcp_config, shutdown_rx.clone(), Some(app_state.database.nimbus_db.clone())).await {
         app_state.dhcp_server = Some(server);
         info!("DHCP server started");
     } else {

@@ -663,3 +663,59 @@ pub struct QueryStats {
     pub cached: i64,
     pub forwarded: i64,
 }
+
+// -- DHCP Lease Persistence -----------------------------------------
+
+/// Ensure the dhcp_leases table exists
+pub fn ensure_dhcp_leases_table(db: &QueryDb) -> Result<(), DatabaseError> {
+    db.conn.with_conn(|conn| {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS dhcp_leases (
+                mac TEXT PRIMARY KEY,
+                ip INTEGER NOT NULL,
+                hostname TEXT NOT NULL DEFAULT '',
+                expires_at INTEGER NOT NULL
+            );"
+        )?;
+        Ok(())
+    })
+}
+
+/// Persist a DHCP lease
+pub fn persist_dhcp_lease(db: &QueryDb, mac: &str, ip: u32, hostname: &str, expires_at: i64) -> Result<(), DatabaseError> {
+    db.conn.with_conn(|conn| {
+        conn.execute(
+            "INSERT OR REPLACE INTO dhcp_leases (mac, ip, hostname, expires_at) VALUES (?1, ?2, ?3, ?4)",
+            params![mac, ip, hostname, expires_at],
+        )?;
+        Ok(())
+    })
+}
+
+/// Delete a persisted DHCP lease
+pub fn delete_dhcp_lease(db: &QueryDb, mac: &str) -> Result<(), DatabaseError> {
+    db.conn.with_conn(|conn| {
+        conn.execute("DELETE FROM dhcp_leases WHERE mac = ?1", params![mac])?;
+        Ok(())
+    })
+}
+
+/// Load all persisted DHCP leases (returns (mac, ip, hostname, expires_at))
+pub fn load_dhcp_leases(db: &QueryDb) -> Result<Vec<(String, u32, String, i64)>, DatabaseError> {
+    db.conn.with_conn(|conn| {
+        let mut stmt = conn.prepare("SELECT mac, ip, hostname, expires_at FROM dhcp_leases")?;
+        let rows = stmt.query_map([], |row| {
+            Ok((
+                row.get::<_, String>(0)?,
+                row.get::<_, u32>(1)?,
+                row.get::<_, String>(2)?,
+                row.get::<_, i64>(3)?,
+            ))
+        })?;
+        let mut result = Vec::new();
+        for row in rows {
+            result.push(row?);
+        }
+        Ok(result)
+    })
+}

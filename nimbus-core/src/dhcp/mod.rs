@@ -102,6 +102,10 @@ pub struct DhcpServer {
     pool: Arc<RwLock<IpPool>>,
     /// Temporary offers (IP → expiry timestamp), cleaned up periodically
     offered: Arc<RwLock<HashMap<u32, i64>>>,
+    /// Declined IPs in quarantine (IP → expiry), not re-offered for 10 min
+    declined: Arc<RwLock<HashMap<u32, i64>>>,
+    /// Database for lease persistence
+    db: Option<Arc<crate::database::queries::QueryDb>>,
 }
 
 struct IpPool {
@@ -123,9 +127,10 @@ impl IpPool {
         ip_u32 >= self.start && ip_u32 <= self.end
     }
     /// Return the next available IP, or None if full (O(1) average)
-    fn next_available(&mut self) -> Option<Ipv4Addr> {
+    /// Skips declined (quarantined) IPs.
+    fn next_available(&mut self, declined: &HashSet<u32>) -> Option<Ipv4Addr> {
         for ip_u32 in self.start..=self.end {
-            if !self.allocated.contains(&ip_u32) {
+            if !self.allocated.contains(&ip_u32) && !declined.contains(&ip_u32) {
                 self.allocated.insert(ip_u32);
                 return Some(Ipv4Addr::from(ip_u32));
             }
@@ -159,6 +164,7 @@ fn encode_message(msg: &Message) -> Result<Vec<u8>, String> {
 pub async fn start(
     config: Arc<RwLock<DhcpConfig>>,
     shutdown_rx: watch::Receiver<bool>,
+    db: Option<Arc<crate::database::queries::QueryDb>>,
 ) -> Option<Arc<DhcpServer>> {
     let (pool_start, pool_end) = {
         let cfg = config.read();
@@ -181,11 +187,25 @@ pub async fn start(
     };
     info!("DHCP server starting: src_ip={}, ifindex={}", src_ip, ifindex);
 
+    // Load persisted leases from DB on startup
+    let leases_map = if let Some(ref db) = db {
+        load_persisted_leases(db, pool_start, pool_end)
+    } else {
+        HashMap::new()
+    };
+    let pool = Arc::new(RwLock::new(IpPool::new(pool_start, pool_end)));
+    // Mark persisted lease IPs as allocated
+    for (_mac, lease) in &leases_map {
+        pool.write().mark_allocated(lease.ip);
+    }
+
     let server = Arc::new(DhcpServer {
         config,
-        leases: Arc::new(RwLock::new(HashMap::new())),
-        pool: Arc::new(RwLock::new(IpPool::new(pool_start, pool_end))),
+        leases: Arc::new(RwLock::new(leases_map)),
+        pool,
         offered: Arc::new(RwLock::new(HashMap::new())),
+        declined: Arc::new(RwLock::new(HashMap::new())),
+        db,
     });
 
     // Socket: create via socket2 for full option control, then convert to tokio.
@@ -300,7 +320,9 @@ async fn handle_dhcp_packet(
             };
             let offered_ip = offered_ip.or_else(|| {
                 let mut pool = server.pool.write();
-                pool.next_available()
+                // Build set of declined IPs to skip
+                let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
+                pool.next_available(&declined)
             });
             match offered_ip {
                 Some(ip) => {
@@ -386,8 +408,9 @@ async fn handle_dhcp_packet(
                 server.pool.write().mark_allocated(ip);
                 // Remove from offered table (if it was an initial offer)
                 server.offered.write().remove(&u32::from(ip));
-                let lease = Lease { ip, mac, hostname, expires_at: expires };
+                let lease = Lease { ip, mac, hostname: hostname.clone(), expires_at: expires };
                 server.leases.write().insert(mac, lease);
+                persist_lease(&server, &mac, ip, &hostname, expires);
 
                 let response = build_ack(&msg, ip, &server);
                 if let Ok(bytes) = encode_message(&response) {
@@ -413,20 +436,33 @@ async fn handle_dhcp_packet(
             if ciaddr != Ipv4Addr::UNSPECIFIED {
                 server.pool.write().release(ciaddr);
                 server.leases.write().remove(&mac);
+                delete_persisted_lease(&server, &mac);
                 debug!("DHCP RELEASE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                     ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             }
         }
         MessageType::Decline => {
-            // Windows sends DECLINE when ARP probe finds a conflict
-            // Release the IP so it can be reassigned to a different client
-            let ciaddr = msg.ciaddr();
-            if ciaddr != Ipv4Addr::UNSPECIFIED {
-                server.pool.write().release(ciaddr);
+            // Windows sends DECLINE when ARP probe finds a conflict (RFC 2131 §4.3.3)
+            // The rejected IP is in RequestedIpAddress option (Option 50), NOT ciaddr
+            let declined_ip = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
+                .and_then(|o| match o {
+                    dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
+                    _ => None,
+                }).or_else(|| {
+                    let ciaddr = msg.ciaddr();
+                    if ciaddr != Ipv4Addr::UNSPECIFIED { Some(ciaddr) } else { None }
+                });
+            if let Some(ip) = declined_ip {
+                let ip_u32 = u32::from(ip);
+                let now = chrono::Utc::now().timestamp();
+                // DO NOT release back to pool — quarantine for 10 minutes
+                // so next_available() skips it and offers a different IP
+                server.declined.write().insert(ip_u32, now + 600);
                 server.leases.write().remove(&mac);
-                server.offered.write().remove(&u32::from(ciaddr));
-                info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                    ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                server.offered.write().remove(&ip_u32);
+                delete_persisted_lease(&server, &mac);
+                info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (quarantined 10min)",
+                    ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
             }
         }
         _ => {}
@@ -565,6 +601,75 @@ fn reclaim_expired(server: &DhcpServer) {
         }
         debug!("DHCP reclaimed {} expired offers", expired_offers.len());
     }
+
+    // 3. Clean expired declined (quarantine) IPs — 10 min timeout
+    let mut expired_declined = Vec::new();
+    {
+        let mut declined = server.declined.write();
+        declined.retain(|ip, expiry| {
+            if *expiry <= now {
+                expired_declined.push(*ip);
+                false
+            } else {
+                true
+            }
+        });
+    }
+    if !expired_declined.is_empty() {
+        let mut pool = server.pool.write();
+        for ip in &expired_declined {
+            pool.release(Ipv4Addr::from(*ip));
+        }
+        debug!("DHCP reclaimed {} expired declined IPs", expired_declined.len());
+    }
+}
+
+/// Persist a lease to the database
+fn persist_lease(server: &DhcpServer, mac: &[u8; 6], ip: Ipv4Addr, hostname: &Option<String>, expires_at: i64) {
+    if let Some(ref db) = server.db {
+        let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+        let ip_u32 = u32::from(ip);
+        let hostname_str = hostname.as_deref().unwrap_or("");
+        let _ = crate::database::queries::persist_dhcp_lease(db, &mac_str, ip_u32, hostname_str, expires_at);
+    }
+}
+
+/// Delete a persisted lease
+fn delete_persisted_lease(server: &DhcpServer, mac: &[u8; 6]) {
+    if let Some(ref db) = server.db {
+        let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+        let _ = crate::database::queries::delete_dhcp_lease(db, &mac_str);
+    }
+}
+
+/// Load persisted leases from database, filtering out expired ones
+fn load_persisted_leases(db: &Arc<crate::database::queries::QueryDb>, pool_start: Ipv4Addr, pool_end: Ipv4Addr) -> HashMap<[u8; 6], Lease> {
+    // Ensure the table exists
+    let _ = crate::database::queries::ensure_dhcp_leases_table(db);
+    let now = chrono::Utc::now().timestamp();
+    let mut leases = HashMap::new();
+    if let Ok(rows) = crate::database::queries::load_dhcp_leases(db) {
+        for (mac_str, ip_u32, hostname, expires_at) in rows {
+            if expires_at <= now { continue; }
+            let ip = Ipv4Addr::from(ip_u32);
+            if ip < pool_start || ip > pool_end { continue; }
+            let mac: [u8; 6] = mac_str.split(':')
+                .filter_map(|b| u8::from_str_radix(b, 16).ok())
+                .collect::<Vec<_>>()
+                .try_into()
+                .ok()
+                .unwrap_or_default();
+            if mac == [0u8; 6] { continue; }
+            leases.insert(mac, Lease {
+                ip,
+                mac,
+                hostname: if hostname.is_empty() { None } else { Some(hostname) },
+                expires_at,
+            });
+        }
+    }
+    info!("Loaded {} persisted DHCP leases", leases.len());
+    leases
 }
 
 /// Get current leases (for API), after reclaiming expired ones
