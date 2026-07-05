@@ -424,7 +424,7 @@ async function loadDashboard() {
       api('/api/stats/top_domains'), api('/api/info/system').catch(()=>({}))
     ]);
     const memMB = sys.memory_bytes ? (sys.memory_bytes / 1048576).toFixed(0) : '?';
-    const cpuSec = sys.cpu_usec ? (sys.cpu_usec / 1000000).toFixed(2) : '?';
+    const cpuSec = sys.cpu_usec ? (sys.cpu_usec / 1000000).toFixed(1) : '?';
     document.getElementById('dash-cards').innerHTML = `
       <div class="card"><div class="label">📥 Total</div><div class="value">${stats.total_queries}</div></div>
       <div class="card"><div class="label">🔴 Blocked</div><div class="value red">${stats.blocked_queries}<span style="font-size:0.5em;display:block;color:#4a5a7a">${stats.percent_blocked.toFixed(1)}%</span></div></div>
