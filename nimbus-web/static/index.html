@@ -137,6 +137,9 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
       <a href="#" onclick="showPage('dns-config',this)"><span class="icon">🌐</span> DNS Servers</a>
       <a href="#" onclick="showPage('dhcp',this)"><span class="icon">📡</span> DHCP</a>
       <a href="#" onclick="showPage('settings',this)"><span class="icon">⚙️</span> Settings</a>
+      <div style="padding:20px;font-size:0.72em;color:#3a4a6a;border-top:1px solid #1a2340;margin-top:8px">
+        v<span id="sidebar-version">0.3.4</span>
+      </div>
     </nav>
   </aside>
   <div class="main">
@@ -780,6 +783,10 @@ async function saveDhcp() {
 
 // ========== INIT ==========
 ensureAuth().then(() => { loadDashboard(); });
+// Update sidebar version from API
+fetch('/api/version').then(r => r.json()).then(d => {
+  if (d.data && d.data.version) document.getElementById('sidebar-version').textContent = d.data.version;
+}).catch(() => {});
 </script>
 </body>
 </html>
