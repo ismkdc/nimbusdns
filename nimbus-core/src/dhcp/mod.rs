@@ -5,7 +5,7 @@
 // Handles DISCOVER → OFFER, REQUEST → ACK cycle.
 // IP pool management with in-memory lease storage.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{self, IoSlice};
 use std::net::{Ipv4Addr, SocketAddrV4};
 use std::os::fd::AsRawFd;
@@ -100,54 +100,50 @@ pub struct DhcpServer {
     config: Arc<RwLock<DhcpConfig>>,
     leases: Arc<RwLock<HashMap<[u8; 6], Lease>>>,
     pool: Arc<RwLock<IpPool>>,
+    /// Temporary offers (IP → expiry timestamp), cleaned up periodically
+    offered: Arc<RwLock<HashMap<u32, i64>>>,
 }
 
 struct IpPool {
-    start: Ipv4Addr,
-    end: Ipv4Addr,
-    allocated: Vec<Ipv4Addr>,
+    start: u32,
+    end: u32,
+    allocated: HashSet<u32>,
 }
 
 impl IpPool {
     fn new(start: Ipv4Addr, end: Ipv4Addr) -> Self {
-        Self { start, end, allocated: Vec::new() }
+        Self {
+            start: u32::from(start),
+            end: u32::from(end),
+            allocated: HashSet::new(),
+        }
     }
-    /// Check if an IP is within the pool range
     fn contains(&self, ip: Ipv4Addr) -> bool {
-        ip >= self.start && ip <= self.end
+        let ip_u32 = u32::from(ip);
+        ip_u32 >= self.start && ip_u32 <= self.end
     }
-    /// Return the next available IP, or None if pool is full
+    /// Return the next available IP, or None if full (O(1) average)
     fn next_available(&mut self) -> Option<Ipv4Addr> {
-        let mut ip = self.start;
-        while ip <= self.end {
-            if !self.allocated.contains(&ip) {
-                self.allocated.push(ip);
-                return Some(ip);
+        for ip_u32 in self.start..=self.end {
+            if !self.allocated.contains(&ip_u32) {
+                self.allocated.insert(ip_u32);
+                return Some(Ipv4Addr::from(ip_u32));
             }
-            ip = next_ipv4(ip, self.end);
-            if ip > self.end { break; }
         }
         None
     }
-    /// Mark an IP as allocated (used when ACKing a renewal/request)
     fn mark_allocated(&mut self, ip: Ipv4Addr) {
-        if self.contains(ip) && !self.allocated.contains(&ip) {
-            self.allocated.push(ip);
+        let ip_u32 = u32::from(ip);
+        if ip_u32 >= self.start && ip_u32 <= self.end {
+            self.allocated.insert(ip_u32);
         }
     }
     fn release(&mut self, ip: Ipv4Addr) {
-        self.allocated.retain(|&a| a != ip);
+        self.allocated.remove(&u32::from(ip));
     }
-    /// Check if an IP is currently allocated
     fn is_allocated(&self, ip: Ipv4Addr) -> bool {
-        self.allocated.contains(&ip)
+        self.allocated.contains(&u32::from(ip))
     }
-}
-
-fn next_ipv4(ip: Ipv4Addr, end: Ipv4Addr) -> Ipv4Addr {
-    let octets = ip.octets();
-    let next = Ipv4Addr::new(octets[0], octets[1], octets[2], octets[3].wrapping_add(1));
-    if next > end { end } else { next }
 }
 
 /// Encode a DHCP message to bytes using dhcproto's Encoder.
@@ -188,6 +184,7 @@ pub async fn start(
         config,
         leases: Arc::new(RwLock::new(HashMap::new())),
         pool: Arc::new(RwLock::new(IpPool::new(pool_start, pool_end))),
+        offered: Arc::new(RwLock::new(HashMap::new())),
     });
 
     // Socket: create via socket2 for full option control, then convert to tokio.
@@ -263,10 +260,12 @@ pub async fn start(
                     if !expired_ips.is_empty() {
                         let mut pool = svr.pool.write();
                         for ip in &expired_ips {
-                            pool.release(*ip);
+                            pool.release(Ipv4Addr::from(*ip));
                         }
                         debug!("DHCP cleaned {} expired leases", expired_ips.len());
                     }
+                    // Also reclaim expired offers
+                    reclaim_expired(&svr);
                 }
                 _ = shutdown.changed() => {
                     info!("DHCP server shutting down");
@@ -310,22 +309,20 @@ async fn handle_dhcp_packet(
     };
     match msg_type {
         MessageType::Discover => {
-            // Reuse existing lease IP if MAC already has one
+            // Priority: existing lease > outstanding offer > new allocation
+            let now = chrono::Utc::now().timestamp();
             let offered_ip = {
                 let leases = server.leases.read();
                 leases.get(&mac).map(|l| l.ip)
             };
             let offered_ip = offered_ip.or_else(|| {
-                server.pool.write().next_available()
+                let mut pool = server.pool.write();
+                pool.next_available()
             });
             match offered_ip {
                 Some(ip) => {
-                    // Extend lease time on rediscovery
-                    if server.leases.read().contains_key(&mac) {
-                        let expires = chrono::Utc::now().timestamp()
-                            + server.config.read().lease_time as i64;
-                        server.leases.write().get_mut(&mac).map(|l| l.expires_at = expires);
-                    }
+                    // Record offer with 30s expiry
+                    server.offered.write().insert(u32::from(ip), now + 30);
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
                         Ok(bytes) => {
@@ -371,6 +368,24 @@ async fn handle_dhcp_packet(
                     return;
                 }
 
+                // Conflict check: is this IP already leased to a DIFFERENT MAC?
+                let conflict = {
+                    let leases = server.leases.read();
+                    leases.iter().any(|(&k, lease)| {
+                        lease.ip == ip && k != mac && lease.expires_at > chrono::Utc::now().timestamp()
+                    })
+                };
+                if conflict {
+                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP conflict)",
+                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    let nak = build_nak(&msg, &server);
+                    if let Ok(bytes) = encode_message(&nak) {
+                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
+                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
+                    }
+                    return;
+                }
+
                 let (_lease_time, expires, hostname) = {
                     let cfg = server.config.read();
                     let lt = cfg.lease_time;
@@ -384,6 +399,8 @@ async fn handle_dhcp_packet(
 
                 // Sync pool: mark IP as allocated (in case it was free)
                 server.pool.write().mark_allocated(ip);
+                // Remove from offered table (if it was an initial offer)
+                server.offered.write().remove(&u32::from(ip));
                 let lease = Lease { ip, mac, hostname, expires_at: expires };
                 server.leases.write().insert(mac, lease);
 
@@ -502,24 +519,62 @@ fn build_nak(request: &Message, server: &DhcpServer) -> Message {
     msg
 }
 
-/// Get current leases (for API), filtering out expired ones
-pub fn get_leases(server: &DhcpServer) -> Vec<Lease> {
+/// Reclaim expired leases and offered IPs (call periodically from check.tick)
+fn reclaim_expired(server: &DhcpServer) {
     let now = chrono::Utc::now().timestamp();
-    let mut leases = server.leases.write();
-    // Remove expired leases and release their IPs back to pool
-    leases.retain(|_mac, lease| {
-        if lease.expires_at <= now {
-            server.pool.write().release(lease.ip);
-            false
-        } else {
-            true
+
+    // 1. Clean expired leases
+    let mut expired_ips = Vec::new();
+    {
+        let mut leases = server.leases.write();
+        leases.retain(|_mac, lease| {
+            if lease.expires_at <= now {
+                expired_ips.push(u32::from(lease.ip));
+                false
+            } else {
+                true
+            }
+        });
+    }
+    if !expired_ips.is_empty() {
+        let mut pool = server.pool.write();
+        for ip in &expired_ips {
+            pool.release(Ipv4Addr::from(*ip));
         }
-    });
-    leases.values().cloned().collect()
+        debug!("DHCP reclaimed {} expired leases", expired_ips.len());
+    }
+
+    // 2. Clean expired offers (30s timeout)
+    let mut expired_offers = Vec::new();
+    {
+        let mut offers = server.offered.write();
+        offers.retain(|ip, expiry| {
+            if *expiry <= now {
+                expired_offers.push(*ip);
+                false
+            } else {
+                true
+            }
+        });
+    }
+    if !expired_offers.is_empty() {
+        let mut pool = server.pool.write();
+        for ip in &expired_offers {
+            pool.release(Ipv4Addr::from(*ip));
+        }
+        debug!("DHCP reclaimed {} expired offers", expired_offers.len());
+    }
+}
+
+/// Get current leases (for API), after reclaiming expired ones
+pub fn get_leases(server: &DhcpServer) -> Vec<Lease> {
+    reclaim_expired(server);
+    server.leases.read().values().cloned().collect()
 }
 
 pub fn get_lease_count(server: &DhcpServer) -> usize {
     let now = chrono::Utc::now().timestamp();
+    reclaim_expired(server);
     server.leases.read().values().filter(|l| l.expires_at > now).count()
 }
 
