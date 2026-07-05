@@ -191,12 +191,15 @@ pub async fn serve(
                     if let Err(e) = cleanup_state.database.nimbus_db.cleanup_expired_sessions() {
                         tracing::warn!("Session cleanup error: {}", e);
                     }
-                    // Delete old queries based on retention config
-                    let retention = cleanup_state.config.read().dns.query_retention;
-                    if retention > 0
-                        && let Err(e) = cleanup_state.database.nimbus_db.delete_old_queries(retention as i64) {
-                            tracing::warn!("Query retention cleanup error: {}", e);
-                        }
+                    // Delete old queries based on retention config (only if logging is enabled)
+                    let cfg = cleanup_state.config.read();
+                    if cfg.dns.query_log {
+                        let retention = cfg.dns.query_retention;
+                        if retention > 0
+                            && let Err(e) = cleanup_state.database.nimbus_db.delete_old_queries(retention as i64) {
+                                tracing::warn!("Query retention cleanup error: {}", e);
+                            }
+                    }
                     // Clean stale overTime client histories
                     cleanup_state.over_time.cleanup_stale_clients();
                 }
