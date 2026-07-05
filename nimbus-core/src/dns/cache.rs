@@ -1,8 +1,7 @@
 // =============================================================================
-// DNS Response Cache - LRU with TTL expiration
+// DNS Response Cache - TTL-based expiration with O(1) get
 // =============================================================================
 
-use std::collections::VecDeque;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -68,75 +67,76 @@ pub struct CacheKey {
     pub ecs_subnet: Option<u32>,
 }
 
-/// DNS cache with LRU eviction
+/// DNS cache with TTL-based expiration and O(1) get.
+/// No LRU queue maintenance on hot path - only periodic cleanup during insert.
 pub struct DnsCache {
     entries: DashMap<CacheKey, CachedResponse>,
     max_entries: usize,
-    /// Eviction queue: when accessed, key is moved to back (LRU)
-    eviction_queue: parking_lot::Mutex<VecDeque<CacheKey>>,
     total_hits: AtomicU64,
     total_misses: AtomicU64,
 }
 
 impl DnsCache {
     pub fn new(max_entries: usize) -> Self {
-        debug!("DNS cache initialized (max {} entries, LRU)", max_entries);
+        debug!("DNS cache initialized (max {} entries, TTL eviction)", max_entries);
         Self {
             entries: DashMap::new(),
             max_entries,
-            eviction_queue: parking_lot::Mutex::new(VecDeque::new()),
             total_hits: AtomicU64::new(0),
             total_misses: AtomicU64::new(0),
         }
     }
 
+    /// O(1) lookup - no LRU queue maintenance on hot path
     pub fn get(&self, key: &CacheKey) -> Option<CachedResponse> {
         let entry = self.entries.get(key)?;
 
         if entry.is_expired() {
+            let key = entry.key().clone();
             drop(entry);
-            self.entries.remove(key);
+            self.entries.remove(&key);
             self.total_misses.fetch_add(1, Ordering::Relaxed);
             return None;
         }
 
         entry.record_hit();
         self.total_hits.fetch_add(1, Ordering::Relaxed);
-
-        // LRU: remove from current position and push to back
-        let mut queue = self.eviction_queue.lock();
-        if let Some(pos) = queue.iter().position(|k| k == key) {
-            queue.remove(pos);
-            queue.push_back(key.clone());
-        }
-
         Some(entry.value().clone())
     }
 
+    /// Insert a new entry, evicting expired + oldest entries if over capacity
     pub fn insert(&self, key: CacheKey, response: CachedResponse) {
-        // LRU: remove old entry if exists
-        if self.entries.contains_key(&key) {
-            self.entries.remove(&key);
+        // Remove old entry if exists (O(1) in DashMap)
+        self.entries.remove(&key);
+
+        // Evict expired entries and oldest if still over capacity
+        if self.entries.len() >= self.max_entries {
+            // Phase 1: remove all expired entries (O(n), rare)
+            let expired: Vec<CacheKey> = self.entries.iter()
+                .filter(|e| e.value().is_expired())
+                .map(|e| e.key().clone())
+                .collect();
+            for k in expired {
+                self.entries.remove(&k);
+            }
         }
 
-        // Evict oldest if at capacity
-        while self.entries.len() >= self.max_entries {
-            self.evict_one();
+        // Phase 2: if still over capacity, remove oldest by cached_at
+        if self.entries.len() >= self.max_entries {
+            let mut oldest: Option<(CacheKey, Instant)> = None;
+            for e in self.entries.iter() {
+                let ca = e.value().cached_at;
+                if oldest.as_ref().map_or(true, |(_, oa)| ca < *oa) {
+                    oldest = Some((e.key().clone(), ca));
+                }
+            }
+            if let Some((k, _)) = oldest {
+                self.entries.remove(&k);
+                trace!("Evicted oldest cache entry");
+            }
         }
-
-        // Track in eviction queue (most recently used = back)
-        let mut queue = self.eviction_queue.lock();
-        queue.push_back(key.clone());
 
         self.entries.insert(key, response);
-    }
-
-    fn evict_one(&self) {
-        let key = self.eviction_queue.lock().pop_front();
-        if let Some(key) = key {
-            self.entries.remove(&key);
-            trace!("Evicted LRU cache entry");
-        }
     }
 
     pub fn remove_domain(&self, domain: &str) -> usize {
@@ -153,7 +153,6 @@ impl DnsCache {
 
     pub fn clear(&self) {
         self.entries.clear();
-        self.eviction_queue.lock().clear();
         debug!("DNS cache cleared");
     }
 

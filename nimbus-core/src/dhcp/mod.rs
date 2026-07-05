@@ -241,9 +241,31 @@ pub async fn start(
                     }
                 }
                 _ = check.tick() => {
+                    // Check if DHCP is still enabled
                     if !cfg_check.read().enabled {
                         info!("DHCP server stopped by config change");
                         break;
+                    }
+                    // Periodically clean up expired leases
+                    let now = chrono::Utc::now().timestamp();
+                    let mut expired_ips = Vec::new();
+                    {
+                        let mut leases = svr.leases.write();
+                        leases.retain(|_mac, lease| {
+                            if lease.expires_at <= now {
+                                expired_ips.push(lease.ip);
+                                false
+                            } else {
+                                true
+                            }
+                        });
+                    }
+                    if !expired_ips.is_empty() {
+                        let mut pool = svr.pool.write();
+                        for ip in &expired_ips {
+                            pool.release(*ip);
+                        }
+                        debug!("DHCP cleaned {} expired leases", expired_ips.len());
                     }
                 }
                 _ = shutdown.changed() => {
