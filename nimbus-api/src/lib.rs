@@ -79,7 +79,7 @@ pub async fn serve(
         .route("/api/auth", post(authenticate))
         .route("/api/auth/setup", post(setup_password))
         .route("/api/auth/session", delete(delete_session))
-        .route("/api/auth/totp", get(get_totp_status).post(setup_totp))
+
 
         // Statistics
         .route("/api/stats", get(get_stats))
@@ -769,6 +769,10 @@ async fn setup_password(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<auth::AuthRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), String> {
+    // Reject if a password is already configured
+    if auth::is_auth_enabled(&state.app_state.config.read().webserver.password_hash) {
+        return Err("Password is already set. Use the web panel to change it.".to_string());
+    }
     let password = body.password.as_deref().unwrap_or("");
     if password.is_empty() {
         return Err("Password cannot be empty".to_string());
@@ -814,14 +818,6 @@ async fn authenticate(
             return Err(auth::AuthError::InvalidCredentials);
         }
 
-    // Verify TOTP if enabled
-    let totp_enabled = state.app_state.config.read().webserver.totp_enabled
-        && state.app_state.config.read().webserver.totp_secret.is_some();
-    if totp_enabled {
-        let totp_token = body.totp.as_deref().unwrap_or("");
-        auth::verify_totp_token(totp_token, &state.app_state.config.read().webserver.totp_secret)?;
-    }
-
     // Create session (minimum 60 seconds)
     let timeout = state.app_state.config.read().webserver.session_timeout.max(60);
     let sid = auth::create_session(&state.app_state.database.nimbus_db, Some(&client_ip), None, timeout)?;
@@ -833,7 +829,6 @@ async fn authenticate(
         "session": {
             "sid": sid,
             "valid": true,
-            "totp_enabled": totp_enabled,
         }
     })))
 }
@@ -853,49 +848,6 @@ async fn delete_session(
     state.app_state.database.nimbus_db.delete_session(&sid)?;
 
     Ok(api_ok(serde_json::json!({"status": "logged_out"})))
-}
-
-/// GET /api/auth/totp - return TOTP status
-async fn get_totp_status(
-    State(state): State<Arc<InternalState>>,
-) -> (StatusCode, Json<serde_json::Value>) {
-    let enabled = state.app_state.config.read().webserver.totp_enabled
-        && state.app_state.config.read().webserver.totp_secret.is_some();
-    api_ok(serde_json::json!({
-        "enabled": enabled,
-    }))
-}
-
-/// POST /api/auth/totp - setup or verify TOTP
-async fn setup_totp(
-    State(state): State<Arc<InternalState>>,
-    Json(body): Json<serde_json::Value>,
-) -> Result<(StatusCode, Json<serde_json::Value>), auth::AuthError> {
-    let action = body.get("action").and_then(|v| v.as_str()).unwrap_or("");
-
-    match action {
-        "setup" => {
-            // Generate a new TOTP secret (return to client for QR code display)
-            let secret = auth::generate_totp_secret();
-            let label = body.get("label").and_then(|v| v.as_str()).unwrap_or("pihole");
-            let uri = auth::generate_totp_uri(&secret, label, "NimbusDNS")?;
-            Ok(api_ok(serde_json::json!({
-                "secret": secret,
-                "uri": uri,
-                "qrcode_url": uri, // In a real UI, this would be rendered as QR
-            })))
-        }
-        "verify" => {
-            // Verify a TOTP token
-            let token = body.get("token").and_then(|v| v.as_str()).unwrap_or("");
-            let secret = &state.app_state.config.read().webserver.totp_secret;
-            auth::verify_totp_token(token, secret)?;
-            Ok(api_ok(serde_json::json!({"valid": true})))
-        }
-        _ => {
-            Ok(api_err(StatusCode::BAD_REQUEST, "action must be 'setup' or 'verify'"))
-        }
-    }
 }
 
 // =============================================================================
