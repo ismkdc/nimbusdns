@@ -44,6 +44,17 @@ struct ClientHistory {
 }
 
 /// The overTime engine
+/// Snapshot of overTime stats for the API (always available, DB-independent)
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct OverTimeSnapshot {
+    pub total_queries: i64,
+    pub blocked_queries: i64,
+    pub cached_queries: i64,
+    pub forwarded_queries: i64,
+    pub uptime_seconds: u64,
+    pub queries_per_second: f64,
+}
+
 pub struct OverTime {
     /// Circular buffer of time slots (indexed by slot number % HISTORY_SLOTS)
     slots: RwLock<Vec<TimeSlot>>,
@@ -53,6 +64,10 @@ pub struct OverTime {
     client_histories: RwLock<HashMap<String, ClientHistory>>,
     /// Total queries counter (atomic for fast read)
     total_queries: AtomicI64,
+    /// Per-type counters (atomic for fast snapshot without scanning slots)
+    blocked_queries: AtomicI64,
+    cached_queries: AtomicI64,
+    forwarded_queries: AtomicI64,
     /// Start time of the process (for uptime)
     start_time: std::time::Instant,
 }
@@ -65,6 +80,9 @@ impl OverTime {
             last_slot_idx: RwLock::new(0),
             client_histories: RwLock::new(HashMap::new()),
             total_queries: AtomicI64::new(0),
+            blocked_queries: AtomicI64::new(0),
+            cached_queries: AtomicI64::new(0),
+            forwarded_queries: AtomicI64::new(0),
             start_time: std::time::Instant::now(),
         }
     }
@@ -86,6 +104,13 @@ impl OverTime {
 
         // Update total counter
         self.total_queries.fetch_add(1, Ordering::Relaxed);
+        // Update per-type counters
+        match status {
+            QueryStatus::Blocked => { self.blocked_queries.fetch_add(1, Ordering::Relaxed); }
+            QueryStatus::Cached => { self.cached_queries.fetch_add(1, Ordering::Relaxed); }
+            QueryStatus::Forwarded => { self.forwarded_queries.fetch_add(1, Ordering::Relaxed); }
+            _ => {}
+        }
 
         // Update the main slot
         {
@@ -197,6 +222,24 @@ impl OverTime {
         result
     }
 
+    /// Get a snapshot of current stats (thread-safe, O(1))
+    pub fn get_snapshot(&self) -> OverTimeSnapshot {
+        let total = self.total_queries.load(Ordering::Relaxed);
+        let blocked = self.blocked_queries.load(Ordering::Relaxed);
+        let cached = self.cached_queries.load(Ordering::Relaxed);
+        let forwarded = self.forwarded_queries.load(Ordering::Relaxed);
+        let uptime = self.start_time.elapsed().as_secs();
+        let qps = if uptime > 0 { total as f64 / uptime as f64 } else { 0.0 };
+        OverTimeSnapshot {
+            total_queries: total,
+            blocked_queries: blocked,
+            cached_queries: cached,
+            forwarded_queries: forwarded,
+            uptime_seconds: uptime,
+            queries_per_second: qps,
+        }
+    }
+
     /// Get total queries count
     pub fn total_queries(&self) -> i64 {
         self.total_queries.load(Ordering::Relaxed)
@@ -222,6 +265,9 @@ impl OverTime {
         }
         self.client_histories.write().clear();
         self.total_queries.store(0, Ordering::Relaxed);
+        self.blocked_queries.store(0, Ordering::Relaxed);
+        self.cached_queries.store(0, Ordering::Relaxed);
+        self.forwarded_queries.store(0, Ordering::Relaxed);
     }
 }
 

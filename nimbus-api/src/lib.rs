@@ -398,7 +398,16 @@ async fn get_stats(State(state): State<Arc<InternalState>>) -> (StatusCode, Json
 }
 
 async fn get_stats_summary(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
-    get_stats(State(state)).await
+    let snap = state.app_state.over_time.get_snapshot();
+    api_ok(serde_json::json!({
+        "total_queries": snap.total_queries,
+        "blocked_queries": snap.blocked_queries,
+        "cached_queries": snap.cached_queries,
+        "forwarded_queries": snap.forwarded_queries,
+        "percent_blocked": if snap.total_queries > 0 { snap.blocked_queries as f64 / snap.total_queries as f64 * 100.0 } else { 0.0 },
+        "query_per_second": snap.queries_per_second,
+        "uptime_seconds": snap.uptime_seconds,
+    }))
 }
 
 async fn get_top_clients(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
