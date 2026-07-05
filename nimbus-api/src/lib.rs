@@ -624,6 +624,15 @@ async fn get_queries(
     State(state): State<Arc<InternalState>>,
     Query(params): Query<QueriesParams>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
+    // Return empty when query logging is disabled
+    if !state.app_state.config.read().dns.query_log {
+        return Ok(api_ok(serde_json::json!({
+            "entries": [],
+            "total": 0,
+            "limit": params.limit.unwrap_or(100).min(1000),
+            "offset": params.offset.unwrap_or(0).max(0),
+        })));
+    }
     let filter = nimbus_core::database::queries::QueryFilter {
         domain: params.domain,
         client: params.client,
