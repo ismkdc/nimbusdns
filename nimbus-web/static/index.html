@@ -269,6 +269,20 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
     <p style="font-size:0.78em;color:#4a5a7a;margin-top:4px">How often to re-download the blocklist (default: 86400 = 24h)</p>
   </div>
 
+  <div class="section-title" style="margin-top:20px">Change Password</div>
+  <div class="form-row">
+    <div class="form-group">
+      <label>New Password</label>
+      <input type="password" id="set-new-pass" placeholder="New password">
+    </div>
+    <div class="form-group">
+      <label>Confirm</label>
+      <input type="password" id="set-confirm-pass" placeholder="Confirm password">
+    </div>
+    <button class="btn btn-primary" style="align-self:flex-end" onclick="changePassword()">🔑 Change</button>
+  </div>
+  <span id="set-pass-msg" style="font-size:0.84em;color:#4ade80;margin-left:12px"></span>
+
   <div style="display:flex;gap:12px;margin-top:20px">
     <button class="btn btn-primary" onclick="saveSettings()">💾 Save Settings</button>
     <span id="set-save-msg" style="font-size:0.84em;color:#4ade80;align-self:center"></span>
@@ -569,6 +583,33 @@ async function saveSettings() {
     setTimeout(() => document.getElementById('set-save-msg').textContent = '', 3000);
     toast('Settings saved');
   } catch(e) { toast('Save failed: '+e, 'error'); }
+}
+
+async function changePassword() {
+  const pass = document.getElementById('set-new-pass').value;
+  const confirm = document.getElementById('set-confirm-pass').value;
+  const msg = document.getElementById('set-pass-msg');
+  if (!pass || pass !== confirm) {
+    msg.textContent = '❌ Passwords do not match';
+    msg.style.color = '#f87171';
+    return;
+  }
+  if (pass.length < 4) {
+    msg.textContent = '❌ Password too short';
+    msg.style.color = '#f87171';
+    return;
+  }
+  try {
+    await api('/api/auth/setup', {method:'POST', body:JSON.stringify({password: pass})});
+    msg.textContent = '✅ Password changed';
+    msg.style.color = '#4ade80';
+    document.getElementById('set-new-pass').value = '';
+    document.getElementById('set-confirm-pass').value = '';
+    setTimeout(() => msg.textContent = '', 3000);
+  } catch(e) {
+    msg.textContent = '❌ ' + e.message;
+    msg.style.color = '#f87171';
+  }
 }
 
 // ========== QUERIES ==========

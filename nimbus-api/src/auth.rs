@@ -14,7 +14,7 @@ use serde::{Deserialize, Serialize};
 use argon2::Argon2;
 use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rand_core::OsRng;
-use totp_rs::{Algorithm, Secret, TOTP};
+
 use tracing::warn;
 use uuid::Uuid;
 
@@ -30,18 +30,25 @@ use nimbus_core::database::{
 /// Authentication and authorization errors
 #[derive(Debug, thiserror::Error)]
 pub enum AuthError {
-    #[error("Invalid credentials")]
+    /// Invalid username/password
     InvalidCredentials,
-    #[error("Session expired or not found")]
+    /// Session expired, not found, or invalid
     Unauthorized,
-    #[error("TOTP verification required")]
-    TotpRequired,
-    #[error("TOTP verification failed")]
-    TotpInvalid,
-    #[error("Rate limited, try again later")]
+    /// Rate limited
     RateLimited,
-    #[error("Internal error: {0}")]
+    /// Internal error
     Internal(String),
+}
+
+impl std::fmt::Display for AuthError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            AuthError::InvalidCredentials => write!(f, "Invalid credentials"),
+            AuthError::Unauthorized => write!(f, "Unauthorized"),
+            AuthError::RateLimited => write!(f, "Rate limited"),
+            AuthError::Internal(msg) => write!(f, "Internal error: {}", msg),
+        }
+    }
 }
 
 impl From<DatabaseError> for AuthError {
@@ -55,8 +62,6 @@ impl IntoResponse for AuthError {
         let (status, msg) = match &self {
             AuthError::InvalidCredentials => (StatusCode::UNAUTHORIZED, "Invalid credentials"),
             AuthError::Unauthorized => (StatusCode::UNAUTHORIZED, "Session expired or not found"),
-            AuthError::TotpRequired => (StatusCode::UNAUTHORIZED, "TOTP verification required"),
-            AuthError::TotpInvalid => (StatusCode::UNAUTHORIZED, "TOTP verification failed"),
             AuthError::RateLimited => {
                 (StatusCode::TOO_MANY_REQUESTS, "Rate limited, try again later")
             }
@@ -189,76 +194,6 @@ pub fn extract_sid_from_headers(
     }
 
     None
-}
-
-// =============================================================================
-// TOTP (2FA) Support
-// =============================================================================
-
-/// Verify a TOTP token against the stored base32-encoded secret.
-pub fn verify_totp_token(token: &str, secret_base32: &Option<String>) -> Result<(), AuthError> {
-    let secret_str = match secret_base32 {
-        Some(s) => s,
-        None => return Err(AuthError::TotpRequired),
-    };
-    if secret_str.is_empty() {
-        return Err(AuthError::TotpRequired);
-    }
-
-    let secret_bytes = Secret::Encoded(secret_str.to_string())
-        .to_bytes()
-        .map_err(|_| AuthError::TotpInvalid)?;
-
-    let totp = TOTP::new(
-        Algorithm::SHA1,
-        6,                              // digits
-        1,                              // skew
-        30,                             // period (30 seconds)
-        secret_bytes,
-        Some("NimbusDNS".to_string()),    // issuer
-        "pihole".to_string(),           // label
-    )
-    .map_err(|_| AuthError::TotpInvalid)?;
-
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs();
-
-    if !totp.check(token, now) {
-        return Err(AuthError::TotpInvalid);
-    }
-
-    Ok(())
-}
-
-/// Generate a new TOTP secret (base32 encoded).
-pub fn generate_totp_secret() -> String {
-    Secret::generate_secret().to_encoded().to_string()
-}
-
-/// Generate an `otpauth://` URI for QR code display.
-pub fn generate_totp_uri(
-    secret_base32: &str,
-    label: &str,
-    _issuer: &str,
-) -> Result<String, AuthError> {
-    let secret_bytes = Secret::Encoded(secret_base32.to_string())
-        .to_bytes()
-        .map_err(|_| AuthError::TotpInvalid)?;
-
-    let totp = TOTP::new(
-        Algorithm::SHA1,
-        6,
-        1,
-        30,
-        secret_bytes,
-        Some("NimbusDNS".to_string()),
-        label.to_string(),
-    )
-    .map_err(|_| AuthError::TotpInvalid)?;
-
-    Ok(totp.get_url())
 }
 
 // =============================================================================
