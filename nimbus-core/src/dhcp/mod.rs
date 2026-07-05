@@ -195,7 +195,7 @@ pub async fn start(
     };
     let pool = Arc::new(RwLock::new(IpPool::new(pool_start, pool_end)));
     // Mark persisted lease IPs as allocated
-    for (_mac, lease) in &leases_map {
+    for lease in leases_map.values() {
         pool.write().mark_allocated(lease.ip);
     }
 
