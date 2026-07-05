@@ -714,22 +714,21 @@ async fn get_info(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<
 
 /// GET /api/info/system - container resource usage (CPU/RAM via cgroup)
 async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
-    // Container memory: cgroup v2 first, then v1
-    let mem_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.current").ok()
-        .and_then(|s| s.trim().parse::<u64>().ok())
-        .or_else(|| {
-            std::fs::read_to_string("/sys/fs/cgroup/memory/memory.usage_in_bytes").ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-        });
-    let mem_limit = std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok()
-        .and_then(|s| s.trim().to_string().parse::<u64>().ok())
-        .or_else(|| {
-            std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes").ok()
-                .and_then(|s| s.trim().parse::<u64>().ok())
-        });
+    // Read memory and CPU in a blocking task to avoid blocking the async runtime
+    let (mem_bytes, mem_limit, cpu_pct) = tokio::task::spawn_blocking(|| {
+        let mem_bytes = std::fs::read_to_string("/sys/fs/cgroup/memory.current").ok()
+            .and_then(|s| s.trim().parse::<u64>().ok())
+            .or_else(|| {
+                std::fs::read_to_string("/sys/fs/cgroup/memory/memory.usage_in_bytes").ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+            });
+        let mem_limit = std::fs::read_to_string("/sys/fs/cgroup/memory.max").ok()
+            .and_then(|s| s.trim().to_string().parse::<u64>().ok())
+            .or_else(|| {
+                std::fs::read_to_string("/sys/fs/cgroup/memory/memory.limit_in_bytes").ok()
+                    .and_then(|s| s.trim().parse::<u64>().ok())
+            });
 
-    // Container CPU percentage: sample cpu_usec twice with 200ms gap
-    let cpu_pct = {
         let read_cpu = || -> std::io::Result<u64> {
             let s = std::fs::read_to_string("/sys/fs/cgroup/cpu.stat")?;
             s.lines()
@@ -738,15 +737,17 @@ async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
                 .and_then(|v| v.parse::<u64>().ok())
                 .ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "cpu.stat"))
         };
-        (|| -> Option<f64> {
+        let cpu_pct = (|| -> Option<f64> {
             let u1 = read_cpu().ok()?;
             std::thread::sleep(std::time::Duration::from_millis(200));
             let u2 = read_cpu().ok()?;
             let dt = 200_000.0;
             let du = (u2 - u1) as f64;
             Some((du / dt * 100.0).clamp(0.0, 100.0))
-        })()
-    };
+        })();
+
+        (mem_bytes, mem_limit, cpu_pct)
+    }).await.unwrap_or((None, None, None));
 
     api_ok(serde_json::json!({
         "memory_bytes": mem_bytes,
