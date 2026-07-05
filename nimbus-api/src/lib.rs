@@ -624,15 +624,6 @@ async fn get_queries(
     State(state): State<Arc<InternalState>>,
     Query(params): Query<QueriesParams>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    // Return empty when query logging is disabled
-    if !state.app_state.config.read().dns.query_log {
-        return Ok(api_ok(serde_json::json!({
-            "entries": [],
-            "total": 0,
-            "limit": params.limit.unwrap_or(100).min(1000),
-            "offset": params.offset.unwrap_or(0).max(0),
-        })));
-    }
     let filter = nimbus_core::database::queries::QueryFilter {
         domain: params.domain,
         client: params.client,
@@ -933,6 +924,17 @@ async fn update_config(
         && let Some(ref dhcp_cfg) = state.app_state.dhcp_config {
             *dhcp_cfg.write() = new_config.dhcp.clone();
         }
+
+    // If query-logging is being disabled, purge all existing query logs
+    if !new_config.dns.query_log {
+        let db = state.app_state.database.nimbus_db.clone();
+        let now = chrono::Utc::now().timestamp();
+        tokio::task::spawn_blocking(move || {
+            if let Err(e) = db.delete_old_queries(now) {
+                tracing::warn!("Failed to purge query logs: {}", e);
+            }
+        });
+    }
 
     *config = new_config;
     drop(config);
