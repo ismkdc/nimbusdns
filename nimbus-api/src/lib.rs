@@ -767,11 +767,15 @@ async fn get_health(State(state): State<Arc<InternalState>>) -> (StatusCode, Jso
 /// POST /api/auth/setup - set initial password (first-time setup)
 async fn setup_password(
     State(state): State<Arc<InternalState>>,
+    headers: axum::http::HeaderMap,
     Json(body): Json<auth::AuthRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), String> {
-    // Reject if a password is already configured
+    // If password is already set, require a valid session to change it
     if auth::is_auth_enabled(&state.app_state.config.read().webserver.password_hash) {
-        return Err("Password is already set. Use the web panel to change it.".to_string());
+        let sid = auth::extract_sid_from_headers(&headers)
+            .ok_or_else(|| "Authentication required".to_string())?;
+        auth::validate_session(&state.app_state.database.nimbus_db, &sid)
+            .map_err(|_| "Authentication required".to_string())?;
     }
     let password = body.password.as_deref().unwrap_or("");
     if password.is_empty() {
