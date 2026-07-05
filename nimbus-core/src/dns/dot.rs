@@ -32,8 +32,6 @@ const CHANNEL_BOUND: usize = 128;
 struct DotQuery {
     /// Wire-format query ([2-byte len][DNS message])
     data: bytes::Bytes,
-    /// DNS transaction ID (bytes 2-3 of the message)
-    dns_id: u16,
     /// Send response back to caller
     reply_tx: tokio::sync::oneshot::Sender<Result<Vec<u8>, DotError>>,
 }
@@ -103,16 +101,8 @@ impl DotManager {
                 wire.extend_from_slice(&len.to_be_bytes());
                 wire.extend_from_slice(query);
 
-                // Extract DNS transaction ID for matching
-                let dns_id = if query.len() >= 2 {
-                    u16::from_be_bytes([query[0], query[1]])
-                } else {
-                    return Err(DotError::ConnectionClosed);
-                };
-
                 let dot_query = DotQuery {
                     data: bytes::Bytes::from(wire),
-                    dns_id,
                     reply_tx,
                 };
 
@@ -157,7 +147,16 @@ impl DotManager {
 /// Persistent TLS connection manager.
 /// Maintains one TLS connection per upstream.
 /// Reads queries from channel, writes to TLS, reads responses,
-/// matches by DNS transaction ID.
+/// Per-connection atomic ID generator for unique transaction IDs.
+fn next_conn_id() -> u16 {
+    static NEXT_ID: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(1);
+    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+}
+
+/// Shared pending map between reader and writer tasks
+type PendingMap = Arc<Mutex<HashMap<u16, tokio::sync::oneshot::Sender<Result<Vec<u8>, DotError>>>>>;
+
+/// maps by per-connection unique ID.
 async fn tls_connection_task(
     tls_config: Arc<ClientConfig>,
     server_name: ServerName<'static>,
@@ -166,12 +165,12 @@ async fn tls_connection_task(
 ) {
     info!("DoT task started for {}", address);
 
-    // Pending queries awaiting responses, keyed by DNS transaction ID
-    let mut pending: HashMap<u16, tokio::sync::oneshot::Sender<Result<Vec<u8>, DotError>>> = HashMap::new();
+    // Shared pending map: reader writes responses, writer reads for matching
+    let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
 
     loop {
         // Establish TLS connection
-        let mut tls = match connect_tls(&tls_config, &server_name, &address).await {
+        let tls = match connect_tls(&tls_config, &server_name, &address).await {
             Ok(t) => t,
             Err(e) => {
                 error!("DoT connect failed for {}: {}, retrying in 5s", address, e);
@@ -180,29 +179,73 @@ async fn tls_connection_task(
             }
         };
 
+        // Split TLS stream into reader + writer halves
+        // Reader runs in its own task and is NEVER cancelled by select!
+        // This prevents TLS stream desync (the main cause of "All upstreams failed")
+        let (mut reader, mut writer) = tokio::io::split(tls);
+        let pending_rd = pending.clone();
+        let addr_rd = address;
+
+        // Spawn reader task - it owns the read half and never gets cancelled
+        let mut reader_handle = tokio::spawn(async move {
+            loop {
+                match read_dns_response(&mut reader).await {
+                    Ok(response) => {
+                        if response.len() >= 2 {
+                            let resp_id = u16::from_be_bytes([response[0], response[1]]);
+                            let mut map = pending_rd.lock();
+                            if let Some(tx) = map.remove(&resp_id) {
+                                let _ = tx.send(Ok(response));
+                                debug!("DoT matched response id={} from {}", resp_id, addr_rd);
+                            } else {
+                                debug!("DoT unmatched response id={} from {}, discarding", resp_id, addr_rd);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        debug!("DoT reader {}: {} (reconnecting)", addr_rd, e);
+                        // Fail all pending queries
+                        let mut map = pending_rd.lock();
+                        for (_id, tx) in map.drain() {
+                            let _ = tx.send(Err(DotError::ConnectionClosed));
+                        }
+                        break;
+                    }
+                }
+            }
+        });
+
+        // Writer task: receives queries from channel, sends them, waits for reader
         use tokio::io::AsyncWriteExt;
 
-        // Main I/O loop
+        // Re-establish: drain the channel into writer until reader fails
         loop {
             tokio::select! {
-                // Incoming query from the channel
                 query = query_rx.recv() => {
                     let query = match query {
                         Some(q) => q,
                         None => {
                             info!("DoT task channel closed for {}", address);
+                            reader_handle.abort();
                             return;
                         }
                     };
 
-                    let dns_id = query.dns_id;
+                    // Assign unique per-connection ID to avoid collision
+                    let conn_id = next_conn_id();
                     let reply_tx = query.reply_tx;
 
-                    // Write query to TLS stream
-                    match tls.write_all(&query.data).await {
+                    // Write query with connection-unique ID
+                    let mut data = query.data.to_vec();
+                    // Overwrite DNS ID with our unique ID (bytes 0-1)
+                    if data.len() >= 2 {
+                        data[0] = (conn_id >> 8) as u8;
+                        data[1] = conn_id as u8;
+                    }
+                    match writer.write_all(&data).await {
                         Ok(_) => {
-                            pending.insert(dns_id, reply_tx);
-                            debug!("DoT sent query id={} to {}", dns_id, address);
+                            pending.lock().insert(conn_id, reply_tx);
+                            debug!("DoT sent query id={} to {}", conn_id, address);
                         }
                         Err(e) => {
                             error!("DoT write failed for {}: {}", address, e);
@@ -211,33 +254,18 @@ async fn tls_connection_task(
                         }
                     }
                 }
-
-                // Read response from TLS stream
-                read_result = read_dns_response(&mut tls) => {
-                    match read_result {
-                        Ok(response) => {
-                            // Extract DNS ID from response (bytes 0-1 of DNS message, after 2-byte len prefix)
-                            if response.len() >= 2 {
-                                let resp_id = u16::from_be_bytes([response[0], response[1]]);
-                                if let Some(tx) = pending.remove(&resp_id) {
-                                    let _ = tx.send(Ok(response));
-                                    debug!("DoT matched response id={} from {}", resp_id, address);
-                                } else {
-                                    debug!("DoT unmatched response id={} from {}, discarding", resp_id, address);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            // Connection closed or error - reconnect immediately
-                            debug!("DoT reconnect for {}: {}", address, e);
-                            // Fail all pending queries
-                            for (_id, tx) in pending.drain() {
-                                let _ = tx.send(Err(DotError::ConnectionClosed));
-                            }
-                            break;
-                        }
-                    }
+                _ = &mut reader_handle => {
+                    // Reader exited, break out to reconnect
+                    break;
                 }
+            }
+        }
+
+        // Reader exited; drain remaining pending queries
+        {
+            let mut map = pending.lock();
+            for (_id, tx) in map.drain() {
+                let _ = tx.send(Err(DotError::ConnectionClosed));
             }
         }
     }
@@ -265,12 +293,12 @@ async fn connect_tls(
 
 /// Read a DNS response from TLS stream: [2-byte len][payload]
 async fn read_dns_response(
-    tls: &mut tokio_rustls::TlsStream<TcpStream>,
+    reader: &mut tokio::io::ReadHalf<tokio_rustls::TlsStream<TcpStream>>,
 ) -> Result<Vec<u8>, DotError> {
     use tokio::io::AsyncReadExt;
 
     let mut len_buf = [0u8; 2];
-    tls.read_exact(&mut len_buf).await?;
+    reader.read_exact(&mut len_buf).await?;
     let response_len = u16::from_be_bytes(len_buf) as usize;
 
     if response_len == 0 || response_len > MAX_DNS_SIZE {
@@ -278,7 +306,7 @@ async fn read_dns_response(
     }
 
     let mut response = vec![0u8; response_len];
-    tls.read_exact(&mut response).await?;
+    reader.read_exact(&mut response).await?;
 
     Ok(response)
 }
