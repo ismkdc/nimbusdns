@@ -39,6 +39,8 @@ pub struct TimeSlot {
 struct ClientHistory {
     slots: Vec<TimeSlot>,
     last_slot_idx: usize,
+    /// Last activity timestamp (epoch seconds), for cleanup
+    last_active: i64,
 }
 
 /// The overTime engine
@@ -119,7 +121,9 @@ impl OverTime {
             let client_data = clients.entry(client_ip.to_string()).or_insert_with(|| ClientHistory {
                 slots: vec![TimeSlot::default(); HISTORY_SLOTS],
                 last_slot_idx: 0,
+                last_active: timestamp,
             });
+            client_data.last_active = timestamp;
 
             let cslot = &mut client_data.slots[idx];
             if cslot.timestamp != slot_ts {
@@ -201,6 +205,13 @@ impl OverTime {
     /// Get uptime in seconds
     pub fn uptime_secs(&self) -> u64 {
         self.start_time.elapsed().as_secs()
+    }
+
+    /// Remove clients inactive for more than 24 hours
+    pub fn cleanup_stale_clients(&self) {
+        let cutoff = chrono::Utc::now().timestamp() - 86400;
+        let mut clients = self.client_histories.write();
+        clients.retain(|_, ch| ch.last_active > cutoff);
     }
 
     /// Clear all data (for testing / flush)
