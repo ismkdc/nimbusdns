@@ -197,6 +197,8 @@ pub async fn serve(
                         && let Err(e) = cleanup_state.database.nimbus_db.delete_old_queries(retention as i64) {
                             tracing::warn!("Query retention cleanup error: {}", e);
                         }
+                    // Clean stale overTime client histories
+                    cleanup_state.over_time.cleanup_stale_clients();
                 }
                 _ = rx.changed() => {
                     tracing::info!("Cleanup task shutting down...");

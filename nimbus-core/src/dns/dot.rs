@@ -12,6 +12,7 @@ use std::net::SocketAddr;
 use std::sync::Arc;
 use std::time::Duration;
 
+use bytes::Bytes;
 use parking_lot::Mutex;
 use rustls::pki_types::ServerName;
 use rustls::ClientConfig;
@@ -154,7 +155,13 @@ fn next_conn_id() -> u16 {
 }
 
 /// Shared pending map between reader and writer tasks
-type PendingMap = Arc<Mutex<HashMap<u16, tokio::sync::oneshot::Sender<Result<Vec<u8>, DotError>>>>>;
+/// A pending query: sender to reply to caller + original DNS ID to restore
+struct PendingEntry {
+    reply_tx: tokio::sync::oneshot::Sender<Result<Vec<u8>, DotError>>,
+    original_dns_id: u16,
+}
+
+type PendingMap = Arc<Mutex<HashMap<u16, PendingEntry>>>;
 
 /// maps by per-connection unique ID.
 async fn tls_connection_task(
@@ -190,12 +197,17 @@ async fn tls_connection_task(
         let mut reader_handle = tokio::spawn(async move {
             loop {
                 match read_dns_response(&mut reader).await {
-                    Ok(response) => {
+                    Ok(mut response) => {
                         if response.len() >= 2 {
                             let resp_id = u16::from_be_bytes([response[0], response[1]]);
                             let mut map = pending_rd.lock();
-                            if let Some(tx) = map.remove(&resp_id) {
-                                let _ = tx.send(Ok(response));
+                            if let Some(entry) = map.remove(&resp_id) {
+                                // Restore original DNS ID before sending to caller
+                                if response.len() >= 2 && entry.original_dns_id != resp_id {
+                                    response[0] = (entry.original_dns_id >> 8) as u8;
+                                    response[1] = entry.original_dns_id as u8;
+                                }
+                                let _ = entry.reply_tx.send(Ok(response));
                                 debug!("DoT matched response id={} from {}", resp_id, addr_rd);
                             } else {
                                 debug!("DoT unmatched response id={} from {}, discarding", resp_id, addr_rd);
@@ -206,8 +218,8 @@ async fn tls_connection_task(
                         debug!("DoT reader {}: {} (reconnecting)", addr_rd, e);
                         // Fail all pending queries
                         let mut map = pending_rd.lock();
-                        for (_id, tx) in map.drain() {
-                            let _ = tx.send(Err(DotError::ConnectionClosed));
+                        for (_id, entry) in map.drain() {
+                            let _ = entry.reply_tx.send(Err(DotError::ConnectionClosed));
                         }
                         break;
                     }
@@ -235,16 +247,25 @@ async fn tls_connection_task(
                     let conn_id = next_conn_id();
                     let reply_tx = query.reply_tx;
 
-                    // Write query with connection-unique ID
+                    // Wire format: [2-byte length][DNS message] where DNS ID is at bytes 2-3
                     let mut data = query.data.to_vec();
-                    // Overwrite DNS ID with our unique ID (bytes 0-1)
-                    if data.len() >= 2 {
-                        data[0] = (conn_id >> 8) as u8;
-                        data[1] = conn_id as u8;
-                    }
+                    let original_dns_id = if data.len() >= 4 {
+                        let id = u16::from_be_bytes([data[2], data[3]]);
+                        // Overwrite DNS ID with our unique connection ID (bytes 2-3)
+                        data[2] = (conn_id >> 8) as u8;
+                        data[3] = conn_id as u8;
+                        id
+                    } else {
+                        // Invalid query, fail it
+                        let _ = reply_tx.send(Err(DotError::ConnectionClosed));
+                        continue;
+                    };
                     match writer.write_all(&data).await {
                         Ok(_) => {
-                            pending.lock().insert(conn_id, reply_tx);
+                            pending.lock().insert(conn_id, PendingEntry {
+                                reply_tx,
+                                original_dns_id,
+                            });
                             debug!("DoT sent query id={} to {}", conn_id, address);
                         }
                         Err(e) => {
@@ -264,8 +285,8 @@ async fn tls_connection_task(
         // Reader exited; drain remaining pending queries
         {
             let mut map = pending.lock();
-            for (_id, tx) in map.drain() {
-                let _ = tx.send(Err(DotError::ConnectionClosed));
+            for (_id, entry) in map.drain() {
+                let _ = entry.reply_tx.send(Err(DotError::ConnectionClosed));
             }
         }
     }

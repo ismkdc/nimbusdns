@@ -243,28 +243,7 @@ pub async fn start(
                         info!("DHCP server stopped by config change");
                         break;
                     }
-                    // Periodically clean up expired leases
-                    let now = chrono::Utc::now().timestamp();
-                    let mut expired_ips = Vec::new();
-                    {
-                        let mut leases = svr.leases.write();
-                        leases.retain(|_mac, lease| {
-                            if lease.expires_at <= now {
-                                expired_ips.push(lease.ip);
-                                false
-                            } else {
-                                true
-                            }
-                        });
-                    }
-                    if !expired_ips.is_empty() {
-                        let mut pool = svr.pool.write();
-                        for ip in &expired_ips {
-                            pool.release(Ipv4Addr::from(*ip));
-                        }
-                        debug!("DHCP cleaned {} expired leases", expired_ips.len());
-                    }
-                    // Also reclaim expired offers
+                    // Reclaim expired leases + offers
                     reclaim_expired(&svr);
                 }
                 _ = shutdown.changed() => {
@@ -309,11 +288,14 @@ async fn handle_dhcp_packet(
     };
     match msg_type {
         MessageType::Discover => {
-            // Priority: existing lease > outstanding offer > new allocation
+            // Priority: existing lease > new allocation
             let now = chrono::Utc::now().timestamp();
-            let offered_ip = {
+            let (offered_ip, is_new) = {
                 let leases = server.leases.read();
-                leases.get(&mac).map(|l| l.ip)
+                match leases.get(&mac) {
+                    Some(l) => (Some(l.ip), false),
+                    None => (None, true),
+                }
             };
             let offered_ip = offered_ip.or_else(|| {
                 let mut pool = server.pool.write();
@@ -321,8 +303,10 @@ async fn handle_dhcp_packet(
             });
             match offered_ip {
                 Some(ip) => {
-                    // Record offer with 30s expiry
-                    server.offered.write().insert(u32::from(ip), now + 30);
+                    // Record offer only for NEW allocations (not existing lease renewals)
+                    if is_new {
+                        server.offered.write().insert(u32::from(ip), now + 30);
+                    }
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
                         Ok(bytes) => {
