@@ -133,13 +133,9 @@ impl QueryRouter {
         for upstream in &upstreams {
             match self.forwarder.forward(&query, upstream, DEFAULT_TIMEOUT).await {
                 Ok(response) => {
-                    // Check for truncation (TC bit) if response exceeds UDP max
-                    let response_bytes = match truncate_if_needed(&response) {
-                        Some(truncated) => truncated,
-                        None => match response.to_vec() {
-                            Ok(b) => b,
-                            Err(_) => continue,
-                        },
+                    let response_bytes = match response.to_vec() {
+                        Ok(b) => b,
+                        Err(_) => continue,
                     };
 
                     // Fix: rewrite TTL before caching (subtract elapsed time)
@@ -316,7 +312,7 @@ fn make_error_response(id: u16, rcode: ResponseCode) -> QueryResult {
 /// If a response exceeds the max UDP payload, truncate it with TC bit set.
 /// Uses hickory-proto's built-in `Message::truncate()` which keeps questions
 /// and sets the TC (Truncated) bit. The client will retry over TCP.
-fn truncate_if_needed(msg: &Message) -> Option<Vec<u8>> {
+pub fn truncate_if_needed(msg: &Message) -> Option<Vec<u8>> {
     let max_size = msg.max_payload() as usize;
     if let Ok(bytes) = msg.to_vec()
         && bytes.len() <= max_size {

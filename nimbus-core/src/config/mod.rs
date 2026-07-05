@@ -575,7 +575,7 @@ fn default_nimbus_db() -> PathBuf {
     std::env::var("NIMBUS_database_nimbus_db")
         .ok()
         .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("/etc/nimbusdns/nimbusdns.db"))
+        .unwrap_or_else(|| PathBuf::from("/var/lib/nimbusdns/nimbus.db"))
 }
 
 fn default_max_queries_stored() -> u64 {

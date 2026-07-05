@@ -9,7 +9,7 @@ use hickory_proto::op::{Message, OpCode, ResponseCode};
 use tokio::net::{UdpSocket, TcpListener};
 use tracing::{info, error, debug};
 
-use crate::dns::router::{QueryRouter, QueryResult};
+use crate::dns::router::{QueryRouter, QueryResult, truncate_if_needed};
 
 const MAX_DNS_SIZE: usize = 4096;
 
@@ -94,7 +94,14 @@ async fn process_udp_query(
     let result = router.route(query, src).await;
 
     match result {
-        QueryResult::Response(bytes) => {
+        QueryResult::Response(mut bytes) => {
+            // Truncate if response exceeds UDP max payload (only for UDP)
+            let msg = Message::from_vec(&bytes).ok();
+            if let Some(ref msg) = msg {
+                if let Some(truncated) = truncate_if_needed(msg) {
+                    bytes = truncated;
+                }
+            }
             socket.send_to(&bytes, src).await?;
         }
         QueryResult::ServerFailure => {
