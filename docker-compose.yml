@@ -1,6 +1,6 @@
 services:
   nimbusdns:
-    image: ismkdc/nimbusdns:latest
+    image: ismkdc/nimbusdns:v0.3.3
     container_name: nimbusdns
     restart: unless-stopped
     network_mode: "host"
@@ -8,7 +8,7 @@ services:
       - NET_ADMIN
       - NET_BIND_SERVICE
     volumes:
-      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml:ro
+      - /etc/nimbusdns/nimbus.toml:/etc/nimbusdns/nimbus.toml
       - nimbusdns-data:/var/lib/nimbusdns
 
 volumes:

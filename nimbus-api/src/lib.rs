@@ -340,8 +340,7 @@ where
             // Only protect /api/* endpoints (web panel is public)
             // Skip auth for /api/auth/* and public info endpoints
             if path.starts_with("/api/") && !path.starts_with("/api/auth/") && path != "/api/auth"
-                && path != "/api/info" && path != "/api/version" && path != "/api/health"
-                && path != "/api/dns/benchmark" && path != "/api/blocklist" {
+                && path != "/api/info" && path != "/api/version" && path != "/api/health" {
                 let password_hash = &state.app_state.config.read().webserver.password_hash;
                 if auth::is_auth_enabled(password_hash) {
                     let sid = match auth::extract_sid_from_headers(req.headers()) {
