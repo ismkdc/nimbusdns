@@ -315,35 +315,39 @@ async fn handle_dhcp_packet(
     };
     match msg_type {
         MessageType::Discover => {
-            // Priority: existing lease > new allocation
             let now = chrono::Utc::now().timestamp();
+            // Atomically: check lease → check offered → allocate under offered.write() lock
             let (offered_ip, is_new) = {
                 let leases = server.leases.read();
-                match leases.get(&mac) {
-                    Some(l) => (Some(l.ip), false),
-                    None => {
-                        // Check if MAC already has an outstanding offer
-                        let offers = server.offered.read();
-                        let existing = offers.iter().find(|(_, val)| val.1 == mac).map(|(&ip, _)| ip);
-                        match existing {
-                            Some(ip) => (Some(Ipv4Addr::from(ip)), false),
-                            _ => (None, true),
+                if let Some(l) = leases.get(&mac) {
+                    (Some(l.ip), false)
+                } else {
+                    let mut offers = server.offered.write();
+                    // Check for existing non-expired offer to this MAC
+                    let existing = offers.iter().find(|(_, val)| val.1 == mac && val.0 > now)
+                        .map(|(&ip, _)| ip);
+                    match existing {
+                        Some(ip) => {
+                            // Refresh TTL on reuse
+                            offers.insert(ip, (now + OFFER_TIMEOUT, mac));
+                            (Some(Ipv4Addr::from(ip)), false)
+                        }
+                        None => {
+                            // Allocate new IP
+                            let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
+                            if let Some(ip) = server.pool.write().next_available(&declined) {
+                                let ip_u32 = u32::from(ip);
+                                offers.insert(ip_u32, (now + OFFER_TIMEOUT, mac));
+                                (Some(ip), true)
+                            } else {
+                                (None, false)
+                            }
                         }
                     }
                 }
             };
-            let offered_ip = offered_ip.or_else(|| {
-                let mut pool = server.pool.write();
-                // Build set of declined IPs to skip
-                let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
-                pool.next_available(&declined)
-            });
             match offered_ip {
                 Some(ip) => {
-                    // Record offer only for NEW allocations (not existing lease renewals)
-                    if is_new {
-                        server.offered.write().insert(u32::from(ip), (now + OFFER_TIMEOUT, mac));
-                    }
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
                         Ok(bytes) => {
