@@ -11,6 +11,12 @@ use std::net::{Ipv4Addr, SocketAddrV4};
 use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
+const OFFER_TIMEOUT: i64 = 30; // seconds
+const DECLINE_QUARANTINE: i64 = 600; // 10 minutes
+
+/// An outstanding offer: (expiry_timestamp, mac_address)
+type OfferEntry = (i64, [u8; 6]);
+
 use dhcproto::v4::{DhcpOptions, Message, MessageType, Opcode};
 use dhcproto::{Decodable, Encoder, Encodable};
 use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags, SockaddrIn};
@@ -100,8 +106,8 @@ pub struct DhcpServer {
     config: Arc<RwLock<DhcpConfig>>,
     leases: Arc<RwLock<HashMap<[u8; 6], Lease>>>,
     pool: Arc<RwLock<IpPool>>,
-    /// Temporary offers (IP → expiry timestamp), cleaned up periodically
-    offered: Arc<RwLock<HashMap<u32, i64>>>,
+    /// Temporary offers (IP → (expiry, mac)), cleaned up periodically
+    offered: Arc<RwLock<HashMap<u32, OfferEntry>>>,
     /// Declined IPs in quarantine (IP → expiry), not re-offered for 10 min
     declined: Arc<RwLock<HashMap<u32, i64>>>,
     /// Database for lease persistence
@@ -315,7 +321,15 @@ async fn handle_dhcp_packet(
                 let leases = server.leases.read();
                 match leases.get(&mac) {
                     Some(l) => (Some(l.ip), false),
-                    None => (None, true),
+                    None => {
+                        // Check if MAC already has an outstanding offer
+                        let offers = server.offered.read();
+                        let existing = offers.iter().find(|(_, val)| val.1 == mac).map(|(&ip, _)| ip);
+                        match existing {
+                            Some(ip) => (Some(Ipv4Addr::from(ip)), false),
+                            _ => (None, true),
+                        }
+                    }
                 }
             };
             let offered_ip = offered_ip.or_else(|| {
@@ -328,7 +342,7 @@ async fn handle_dhcp_packet(
                 Some(ip) => {
                     // Record offer only for NEW allocations (not existing lease renewals)
                     if is_new {
-                        server.offered.write().insert(u32::from(ip), now + 30);
+                        server.offered.write().insert(u32::from(ip), (now + OFFER_TIMEOUT, mac));
                     }
                     let response = build_offer(&msg, ip, &server);
                     match encode_message(&response) {
@@ -585,8 +599,8 @@ fn reclaim_expired(server: &DhcpServer) {
     let mut expired_offers = Vec::new();
     {
         let mut offers = server.offered.write();
-        offers.retain(|ip, expiry| {
-            if *expiry <= now {
+        offers.retain(|ip, entry| {
+            if entry.0 <= now {
                 expired_offers.push(*ip);
                 false
             } else {
