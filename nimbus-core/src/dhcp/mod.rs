@@ -12,7 +12,7 @@ use std::os::fd::AsRawFd;
 use std::sync::Arc;
 
 const OFFER_TIMEOUT: i64 = 30; // seconds
-const DECLINE_QUARANTINE: i64 = 600; // 10 minutes
+
 
 /// An outstanding offer: (expiry_timestamp, mac_address)
 type OfferEntry = (i64, [u8; 6]);
@@ -317,7 +317,7 @@ async fn handle_dhcp_packet(
         MessageType::Discover => {
             let now = chrono::Utc::now().timestamp();
             // Atomically: check lease → check offered → allocate under offered.write() lock
-            let (offered_ip, is_new) = {
+            let (offered_ip, _is_new) = {
                 let leases = server.leases.read();
                 if let Some(l) = leases.get(&mac) {
                     (Some(l.ip), false)
