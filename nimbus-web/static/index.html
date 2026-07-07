@@ -325,6 +325,12 @@ async function api(path, opts = {}) {
     : path;
   try {
     const res = await fetch(API + cachePath, { headers, ...opts });
+    // Global 401 handler: session expired or invalid
+    if (res.status === 401) {
+      localStorage.removeItem('sid');
+      location.reload();
+      throw new Error('Session expired');
+    }
     const data = await res.json();
     if (data.data) return data.data;
     if (data.error) throw new Error(data.error);
@@ -389,15 +395,12 @@ function skipSetup() {
 async function ensureAuth() {
   const sid = localStorage.getItem('sid');
   if (sid) {
-    // Try a simple API call to check if session is valid
+    // Validate session with a protected endpoint (not /api/info — it's public)
     try {
-      const info = await api('/api/info');
-      if (info && info.password_set === false) {
-        document.getElementById('wizard').classList.add('show');
-      }
-      return;
+      await api('/api/stats/summary');
+      return; // session is valid
     } catch(e) {
-      // Session expired, clear it
+      // Session expired or invalid, clear it
       localStorage.removeItem('sid');
     }
   }
@@ -418,13 +421,16 @@ async function ensureAuth() {
           const data = await res.json();
           if (data.data && data.data.session) {
             localStorage.setItem('sid', data.data.session.sid);
-            loadDashboard();
+            // Don't call loadDashboard() here — .then() at line 785 handles it
           }
         } else {
           alert('Invalid password');
           localStorage.removeItem('sid');
           location.reload();
         }
+      } else {
+        // User cancelled prompt — reload to try again
+        location.reload();
       }
     }
   } catch(e) {
