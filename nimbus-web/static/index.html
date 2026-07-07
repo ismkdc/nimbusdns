@@ -138,7 +138,7 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
       <a href="#" onclick="showPage('dhcp',this)"><span class="icon">📡</span> DHCP</a>
       <a href="#" onclick="showPage('settings',this)"><span class="icon">⚙️</span> Settings</a>
       <div style="padding:20px;font-size:0.72em;color:#3a4a6a;border-top:1px solid #1a2340;margin-top:8px">
-        v<span id="sidebar-version">0.4.2</span>
+        v<span id="sidebar-version">0.4.3</span>
       </div>
     </nav>
   </aside>
@@ -630,11 +630,11 @@ async function loadQueries() {
 
 // ========== DNS SERVERS ==========
 const DNS_PROVIDERS = [
-  {name:'Cloudflare', provider:'Cloudflare Inc.', ip:'1.1.1.1', hostname:'cloudflare-dns.com', port:853, popular:true},
-  {name:'Google', provider:'Google LLC', ip:'8.8.8.8', hostname:'dns.google', port:853, popular:true},
-  {name:'Quad9', provider:'Quad9 Foundation', ip:'9.9.9.9', hostname:'dns.quad9.net', port:853, popular:true},
-  {name:'OpenDNS', provider:'Cisco', ip:'208.67.222.222', hostname:'dns.opendns.com', port:853},
-  {name:'Mullvad', provider:'Mullvad VPN', ip:'194.242.2.2', hostname:'base.dns.mullvad.net', port:853},
+  {name:'Cloudflare', provider:'Cloudflare Inc.', ips:['1.1.1.1','1.0.0.1'], hostname:'cloudflare-dns.com', port:853, popular:true},
+  {name:'Google', provider:'Google LLC', ips:['8.8.8.8','8.8.4.4'], hostname:'dns.google', port:853, popular:true},
+  {name:'Quad9', provider:'Quad9 Foundation', ips:['9.9.9.9','149.112.112.112'], hostname:'dns.quad9.net', port:853, popular:true},
+  {name:'OpenDNS', provider:'Cisco', ips:['208.67.222.222','208.67.220.220'], hostname:'dns.opendns.com', port:853},
+  {name:'Mullvad', provider:'Mullvad VPN', ips:['194.242.2.2'], hostname:'base.dns.mullvad.net', port:853},
 ];
 
 async function loadDnsList() {
@@ -653,7 +653,7 @@ async function loadDnsList() {
     // Try to match currentLookup (hostname or IP) to a known provider
     if (!selectedDns) {
       const matched = DNS_PROVIDERS.find(p =>
-        currentLookup === p.hostname || currentLookup === p.ip || currentLookup.includes(p.hostname)
+        currentLookup === p.hostname || (p.ips && p.ips.includes(currentLookup)) || currentLookup.includes(p.hostname)
       );
       if (matched) selectedDns = matched.name;
       // Default to Google if no configured upstream at all
@@ -682,7 +682,7 @@ async function measureDns(provider) {
     // Real TCP latency measurement via server-side benchmark
     const res = await fetch(API + '/api/dns/benchmark', {
       method:'POST', headers:{'Content-Type':'application/json'},
-      body:JSON.stringify({ip:provider.ip, port:provider.port})
+      body:JSON.stringify({ip:provider.ips[0], port:provider.port})
     });
     const data = await res.json();
     if (data.data && data.data.latency_ms !== null) {
@@ -717,17 +717,17 @@ async function saveDnsSettings() {
     const hostname = parts.slice(parts.length - 1)[0];
     const address = parts.slice(0, parts.length - 2).join(':');
     if (!address || isNaN(port) || !hostname) { toast('Invalid format', 'error'); return; }
-    upstream = {Tls:{address, port, hostname}};
+    upstream = [{Tls:{address, port, hostname}}];
   } else if (selectedDns) {
     const provider = DNS_PROVIDERS.find(p => p.name === selectedDns);
     if (!provider) return;
-    upstream = {Tls:{address:provider.ip, port:provider.port, hostname:provider.hostname}};
+    upstream = provider.ips.map(ip => ({Tls:{address:ip, port:provider.port, hostname:provider.hostname}}));
   } else {
     toast('Select a DNS provider or enter custom', 'error');
     return;
   }
   try {
-    await api('/api/config', {method:'PATCH', body:JSON.stringify({dns:{upstreams:[upstream]}})});
+    await api('/api/config', {method:'PATCH', body:JSON.stringify({dns:{upstreams:upstream}})});
     document.getElementById('dns-test-result').textContent = '✅ DNS saved (restart may be needed)';
     toast('DNS settings saved!');
   } catch(e) { toast('Failed: ' + e, 'error'); }
