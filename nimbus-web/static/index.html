@@ -138,7 +138,7 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
       <a href="#" onclick="showPage('dhcp',this)"><span class="icon">📡</span> DHCP</a>
       <a href="#" onclick="showPage('settings',this)"><span class="icon">⚙️</span> Settings</a>
       <div style="padding:20px;font-size:0.72em;color:#3a4a6a;border-top:1px solid #1a2340;margin-top:8px">
-        v<span id="sidebar-version">0.4.4</span>
+        v<span id="sidebar-version">0.4.7</span>
       </div>
     </nav>
   </aside>
@@ -685,14 +685,12 @@ async function measureDns(provider) {
   if (!el) return;
   el.textContent = '⏳';
   try {
-    // Real TCP latency measurement via server-side benchmark
-    const res = await fetch(API + '/api/dns/benchmark', {
-      method:'POST', headers:{'Content-Type':'application/json'},
+    const result = await api('/api/dns/benchmark', {
+      method:'POST',
       body:JSON.stringify({ip:provider.ips[0], port:provider.port})
     });
-    const data = await res.json();
-    if (data.data && data.data.latency_ms !== null) {
-      const ms = data.data.latency_ms;
+    if (result && result.latency_ms !== null) {
+      const ms = result.latency_ms;
       el.textContent = ms + 'ms';
       el.className = 'ping' + (ms > 200 ? ' slow' : '');
     } else {

@@ -1457,7 +1457,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-api"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1491,7 +1491,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-bin"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1507,7 +1507,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-core"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1545,7 +1545,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-web"
-version = "0.4.6"
+version = "0.4.7"
 dependencies = [
  "anyhow",
  "axum",
