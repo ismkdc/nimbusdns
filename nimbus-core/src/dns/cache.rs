@@ -181,3 +181,157 @@ pub struct CacheStats {
     pub misses: u64,
     pub max_entries: usize,
 }
+
+// =============================================================================
+// Tests
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{Duration, Instant};
+
+    fn make_key(domain: &str) -> CacheKey {
+        CacheKey {
+            domain: domain.to_string(),
+            qtype: 1,   // A
+            qclass: 1,  // IN
+            dnssec_ok: false,
+            ecs_subnet: None,
+        }
+    }
+
+    fn make_response(ttl: u32) -> CachedResponse {
+        CachedResponse {
+            data: Arc::from(vec![0u8; 16]),
+            cached_at: Instant::now(),
+            original_ttl: ttl,
+            ttl,
+            qtype: 1,
+            qclass: 1,
+            hits: AtomicU64::new(0),
+        }
+    }
+
+    // ── Test 14: insert → get hit, hits counter increments ──────────────
+    #[test]
+    fn test_insert_get_hit() {
+        let cache = DnsCache::new(10);
+        let key = make_key("example.com");
+        let resp = make_response(60);
+        cache.insert(key.clone(), resp);
+        let got = cache.get(&key);
+        assert!(got.is_some());
+        let stats = cache.stats();
+        assert_eq!(stats.hits, 1);
+        assert_eq!(stats.misses, 0);
+    }
+
+    // ── Test 15: miss on missing key → None ─────────────────────────────
+    #[test]
+    fn test_miss() {
+        let cache = DnsCache::new(10);
+        let key = make_key("missing.com");
+        let got = cache.get(&key);
+        assert!(got.is_none());
+        let stats = cache.stats();
+        assert_eq!(stats.hits, 0);
+        // Misses only increment for expired entries, not non-existent keys
+        assert_eq!(stats.misses, 0);
+    }
+
+    // ── Test 16: ttl=0 → is_expired, get → None, entry evicted ─────────
+    #[test]
+    fn test_expired_ttl_zero() {
+        let cache = DnsCache::new(10);
+        let key = make_key("gone.com");
+        // TTL = 0 means already expired
+        let resp = CachedResponse {
+            data: Arc::from(vec![0u8; 16]),
+            cached_at: Instant::now() - Duration::from_secs(1), // cached 1s ago
+            original_ttl: 0,
+            ttl: 0,
+            qtype: 1,
+            qclass: 1,
+            hits: AtomicU64::new(0),
+        };
+        cache.insert(key.clone(), resp);
+        // Get should return None and remove the entry
+        let got = cache.get(&key);
+        assert!(got.is_none());
+        // Entry should be gone
+        assert_eq!(cache.len(), 0);
+    }
+
+    // ── Test 17: remaining_ttl saturating (past → 0) ────────────────────
+    #[test]
+    fn test_remaining_ttl_saturating() {
+        let resp = CachedResponse {
+            data: Arc::from(vec![0u8; 16]),
+            cached_at: Instant::now() - Duration::from_secs(10), // cached 10s ago
+            original_ttl: 5,   // TTL was 5s, so expired
+            ttl: 5,
+            qtype: 1,
+            qclass: 1,
+            hits: AtomicU64::new(0),
+        };
+        // remaining_ttl should saturate to 0, not underflow
+        assert_eq!(resp.remaining_ttl(), Duration::from_secs(0));
+        assert!(resp.is_expired());
+    }
+
+    // ── Test 18: max_entries=2, insert 3 → oldest evicted, len ≤ 2 ─────
+    #[test]
+    fn test_max_entries_eviction() {
+        let cache = DnsCache::new(2);
+        let k1 = make_key("first.com");
+        let k2 = make_key("second.com");
+        let k3 = make_key("third.com");
+
+        cache.insert(k1.clone(), make_response(60));
+        cache.insert(k2.clone(), make_response(60));
+        assert_eq!(cache.len(), 2);
+
+        cache.insert(k3.clone(), make_response(60));
+        // Should have evicted one (oldest) to stay at 2
+        assert!(cache.len() <= 2);
+        // third.com must be present
+        assert!(cache.get(&k3).is_some());
+    }
+
+    // ── Test 19: remove_domain matches and returns count ────────────────
+    #[test]
+    fn test_remove_domain() {
+        let cache = DnsCache::new(10);
+        cache.insert(make_key("test.com"), make_response(60));
+        cache.insert(make_key("test.com"), make_response(60)); // same key (A + IN)
+        cache.insert(make_key("other.com"), make_response(60));
+        // test.com has 1 unique key (second insert overwrites)
+        assert_eq!(cache.len(), 2);
+        let removed = cache.remove_domain("test.com");
+        assert_eq!(removed, 1);
+        assert_eq!(cache.len(), 1);
+    }
+
+    // ── Test 20: same key twice → single entry, last data wins ─────────
+    #[test]
+    fn test_reinsert_same_key() {
+        let cache = DnsCache::new(10);
+        let key = make_key("dup.com");
+
+        let r1 = CachedResponse {
+            data: Arc::from(b"first response".to_vec()),
+            ..make_response(60)
+        };
+        cache.insert(key.clone(), r1);
+
+        let r2 = CachedResponse {
+            data: Arc::from(b"second response".to_vec()),
+            ..make_response(60)
+        };
+        cache.insert(key.clone(), r2);
+
+        assert_eq!(cache.len(), 1);
+        let got = cache.get(&key).unwrap();
+        assert_eq!(&*got.data, b"second response");
+    }
+}

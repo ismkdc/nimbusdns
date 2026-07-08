@@ -152,6 +152,97 @@ fn validate_response_question(query: &Message, response: &Message) -> Result<(),
     Ok(())
 }
 
+// =============================================================================
+// Tests
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hickory_proto::op::{Message as HickoryMessage, OpCode};
+    use hickory_proto::rr::{Name, RecordType};
+
+    fn make_query(name: &str, qtype: RecordType) -> HickoryMessage {
+        let mut msg = HickoryMessage::query();
+        msg.add_query(hickory_proto::op::Query::query(
+            Name::from_utf8(name).unwrap(),
+            qtype,
+        ));
+        msg
+    }
+
+    fn make_response_like(query: &HickoryMessage) -> HickoryMessage {
+        // Echo the query's question back (like a real response would)
+        let mut msg = HickoryMessage::response(query.metadata.id, OpCode::Query);
+        for q in &query.queries {
+            msg.add_query(q.clone());
+        }
+        msg
+    }
+
+    // ── Test 1: matching name+type → Ok ───────────────────────────────────
+    #[test]
+    fn test_question_match_ok() {
+        let q = make_query("example.com", RecordType::A);
+        let r = make_response_like(&q);
+        assert!(validate_response_question(&q, &r).is_ok());
+    }
+
+    // ── Test 2: different name → ResponseMismatch ─────────────────────────
+    #[test]
+    fn test_question_mismatch_name() {
+        let q = make_query("example.com", RecordType::A);
+        let mut r = make_response_like(&q);
+        // Replace response question with a different name
+        r.queries.clear();
+        r.add_query(hickory_proto::op::Query::query(
+            Name::from_utf8("other.com").unwrap(),
+            RecordType::A,
+        ));
+        assert_eq!(
+            validate_response_question(&q, &r).unwrap_err().to_string(),
+            "Response question does not match query"
+        );
+    }
+
+    // ── Test 3: A vs AAAA (type mismatch) → ResponseMismatch ─────────────
+    #[test]
+    fn test_question_mismatch_type() {
+        let q = make_query("example.com", RecordType::A);
+        let mut r = make_response_like(&q);
+        r.queries.clear();
+        r.add_query(hickory_proto::op::Query::query(
+            Name::from_utf8("example.com").unwrap(),
+            RecordType::AAAA,
+        ));
+        assert!(validate_response_question(&q, &r).is_err());
+    }
+
+    // ── Test 4: query has no question → ResponseMismatch ─────────────────
+    #[test]
+    fn test_query_no_question() {
+        let q = HickoryMessage::query(); // empty query
+        let r = make_response_like(&make_query("x.com", RecordType::A));
+        assert!(validate_response_question(&q, &r).is_err());
+    }
+
+    // ── Test 5: response has no question → ResponseMismatch ──────────────
+    #[test]
+    fn test_response_no_question() {
+        let q = make_query("x.com", RecordType::A);
+        let r = HickoryMessage::response(0, OpCode::Query); // no questions
+        assert!(validate_response_question(&q, &r).is_err());
+    }
+
+    // ── Test 6: CNAME response (question echoes qname) → Ok ──────────────
+    #[test]
+    fn test_cname_response_ok() {
+        // CNAME responses still echo the original question's qname
+        let q = make_query("example.com", RecordType::A);
+        let r = make_response_like(&q);
+        assert!(validate_response_question(&q, &r).is_ok());
+    }
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ForwardError {
     #[error("Query encoding failed: {0}")]

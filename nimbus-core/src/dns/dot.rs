@@ -73,6 +73,15 @@ impl DotManager {
         }
     }
 
+    /// Create a DotManager with a custom TLS config (e.g. for tests with
+    /// a self-signed CA). Takes ownership of the given `ClientConfig`.
+    pub fn with_tls_config(tls_config: ClientConfig) -> Self {
+        Self {
+            upstreams: Mutex::new(HashMap::new()),
+            tls_config: Arc::new(tls_config),
+        }
+    }
+
     fn build_tls_config() -> ClientConfig {
         let mut root_store = rustls::RootCertStore::empty();
         for cert in rustls_native_certs::load_native_certs().expect("load native CA certs") {

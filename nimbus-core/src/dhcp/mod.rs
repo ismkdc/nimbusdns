@@ -114,6 +114,30 @@ pub struct DhcpServer {
     db: Option<Arc<crate::database::queries::QueryDb>>,
 }
 
+impl DhcpServer {
+    /// Atomically: conflict-check + lease-insert under a single write lock.
+    /// Returns `true` if the lease was committed, `false` if there was a
+    /// conflict (IP already leased to a different MAC with active lease).
+    pub fn try_commit_lease(
+        &self,
+        mac: [u8; 6],
+        ip: Ipv4Addr,
+        expires_at: i64,
+        hostname: Option<String>,
+    ) -> bool {
+        let mut leases = self.leases.write();
+        let now = chrono::Utc::now().timestamp();
+        let conflict = leases.iter().any(|(&k, lease)| {
+            lease.ip == ip && k != mac && lease.expires_at > now
+        });
+        if conflict {
+            return false;
+        }
+        leases.insert(mac, Lease { ip, mac, hostname, expires_at });
+        true
+    }
+}
+
 struct IpPool {
     start: u32,
     end: u32,
@@ -393,9 +417,6 @@ async fn handle_dhcp_packet(
                     return;
                 }
 
-                // Atomically: conflict-check + lease-insert under a single write lock.
-                // This prevents two concurrent REQUESTs for the same IP from both
-                // passing the check and creating duplicate leases (latent race in DORA).
                 let (_lease_time, expires, hostname) = {
                     let cfg = server.config.read();
                     let lt = cfg.lease_time;
@@ -407,23 +428,8 @@ async fn handle_dhcp_packet(
                     (lt, chrono::Utc::now().timestamp() + lt as i64, host)
                 };
 
-                // Check + insert under a single write lock, but drop the lock
-                // before any .await point (parking_lot guards are not Send).
-                let conflict = {
-                    let mut leases = server.leases.write();
-                    let found = leases.iter().any(|(&k, lease)| {
-                        lease.ip == ip && k != mac && lease.expires_at > chrono::Utc::now().timestamp()
-                    });
-                    if found {
-                        true
-                    } else {
-                        let lease = Lease { ip, mac, hostname: hostname.clone(), expires_at: expires };
-                        leases.insert(mac, lease);
-                        false
-                    }
-                };
-
-                if conflict {
+                // Atomically: conflict-check + lease-insert under a single write lock.
+                if !server.try_commit_lease(mac, ip, expires, hostname.clone()) {
                     warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP conflict)",
                         ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
                     let nak = build_nak(&msg, &server);
@@ -710,6 +716,364 @@ pub fn get_lease_count(server: &DhcpServer) -> usize {
     let now = chrono::Utc::now().timestamp();
     reclaim_expired(server);
     server.leases.read().values().filter(|l| l.expires_at > now).count()
+}
+
+// =============================================================================
+// Tests
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::net::Ipv4Addr;
+
+    // ── helpers ──────────────────────────────────────────────────────────
+    fn pool(start: &str, end: &str) -> IpPool {
+        IpPool::new(start.parse().unwrap(), end.parse().unwrap())
+    }
+
+    fn ip(s: &str) -> Ipv4Addr { s.parse().unwrap() }
+    fn ipu(s: &str) -> u32 { u32::from(ip(s)) }
+
+    fn make_server() -> DhcpServer {
+        DhcpServer {
+            config: Arc::new(RwLock::new(crate::config::DhcpConfig {
+                router: Some(ip("192.168.1.1")),
+                netmask: ip("255.255.255.0"),
+                lease_time: 86400,
+                domain: Some("lan".into()),
+                ..Default::default()
+            })),
+            leases: Arc::new(RwLock::new(HashMap::new())),
+            pool: Arc::new(RwLock::new(IpPool::new(
+                ip("192.168.1.100"),
+                ip("192.168.1.200"),
+            ))),
+            offered: Arc::new(RwLock::new(HashMap::new())),
+            declined: Arc::new(RwLock::new(HashMap::new())),
+            db: None,
+        }
+    }
+
+    // ======================================================================
+    // IpPool tests (P0)
+    // ======================================================================
+
+    // ── Test 7: next_available returns start, start+1 … ──────────────────
+    #[test]
+    fn test_pool_next_available_sequential() {
+        let mut p = pool("10.0.0.1", "10.0.0.3");
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.1")));
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.2")));
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.3")));
+        assert_eq!(p.next_available(&HashSet::new()), None);
+    }
+
+    // ── Test 8: allocated IPs are skipped ───────────────────────────────
+    #[test]
+    fn test_pool_skips_allocated() {
+        let mut p = pool("10.0.0.1", "10.0.0.3");
+        p.mark_allocated(ip("10.0.0.2"));
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.1")));
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.3")));
+        assert_eq!(p.next_available(&HashSet::new()), None);
+    }
+
+    // ── Test 9: declined (quarantined) IPs are skipped ──────────────────
+    #[test]
+    fn test_pool_skips_declined() {
+        let mut p = pool("10.0.0.1", "10.0.0.3");
+        let declined = HashSet::from([ipu("10.0.0.2")]);
+        assert_eq!(p.next_available(&declined), Some(ip("10.0.0.1")));
+        assert_eq!(p.next_available(&declined), Some(ip("10.0.0.3")));
+        assert_eq!(p.next_available(&declined), None);
+    }
+
+    // ── Test 10: full pool → None ───────────────────────────────────────
+    #[test]
+    fn test_pool_full() {
+        let mut p = pool("10.0.0.1", "10.0.0.2");
+        assert!(p.next_available(&HashSet::new()).is_some());
+        assert!(p.next_available(&HashSet::new()).is_some());
+        assert!(p.next_available(&HashSet::new()).is_none());
+    }
+
+    // ── Test 11: release → IP available again ───────────────────────────
+    #[test]
+    fn test_pool_release() {
+        let mut p = pool("10.0.0.1", "10.0.0.1");
+        let allocated = p.next_available(&HashSet::new()).unwrap();
+        assert_eq!(allocated, ip("10.0.0.1"));
+        // After release it's available again
+        p.release(allocated);
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.1")));
+    }
+
+    // ── Test 12: contains boundaries ─────────────────────────────────────
+    #[test]
+    fn test_pool_contains_boundaries() {
+        let p = pool("10.0.0.10", "10.0.0.20");
+        assert!(!p.contains(ip("10.0.0.9")));
+        assert!(p.contains(ip("10.0.0.10")));
+        assert!(p.contains(ip("10.0.0.15")));
+        assert!(p.contains(ip("10.0.0.20")));
+        assert!(!p.contains(ip("10.0.0.21")));
+    }
+
+    // ── Test 13: mark_allocated out-of-range → no-op ─────────────────────
+    #[test]
+    fn test_pool_mark_allocated_out_of_range() {
+        let mut p = pool("10.0.0.1", "10.0.0.5");
+        p.mark_allocated(ip("10.0.0.255")); // outside range
+        // Should not affect allocation — next_available still starts at 10.0.0.1
+        assert_eq!(p.next_available(&HashSet::new()), Some(ip("10.0.0.1")));
+    }
+
+    // ======================================================================
+    // build_offer / build_ack / build_nak tests (P0)
+    // ======================================================================
+
+    fn sample_discover() -> dhcproto::v4::Message {
+        // Build a minimal DISCOVER message
+        let mut msg = dhcproto::v4::Message::new_with_id(
+            12345,
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            Ipv4Addr::UNSPECIFIED,
+            &[0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0xFF],
+        );
+        msg.set_opcode(dhcproto::v4::Opcode::BootRequest);
+        let mut opts = dhcproto::v4::DhcpOptions::new();
+        opts.insert(dhcproto::v4::DhcpOption::MessageType(dhcproto::v4::MessageType::Discover));
+        msg.set_opts(opts);
+        msg
+    }
+
+    // ── Test 21: offer contains correct lease_time, renewal, rebinding ──
+    #[test]
+    fn test_build_offer_timing_options() {
+        let server = make_server();
+        let discover = sample_discover();
+        let offer = build_offer(&discover, ip("192.168.1.50"), &server);
+        let opts = offer.opts();
+        let lt = match opts.get(dhcproto::v4::OptionCode::AddressLeaseTime).unwrap() {
+            dhcproto::v4::DhcpOption::AddressLeaseTime(v) => *v,
+            _ => panic!("missing AddressLeaseTime"),
+        };
+        assert_eq!(lt, 86400);
+        let renewal = match opts.get(dhcproto::v4::OptionCode::Renewal).unwrap() {
+            dhcproto::v4::DhcpOption::Renewal(v) => *v,
+            _ => panic!("missing Renewal"),
+        };
+        assert_eq!(renewal, 43200); // 86400/2
+        let rebind = match opts.get(dhcproto::v4::OptionCode::Rebinding).unwrap() {
+            dhcproto::v4::DhcpOption::Rebinding(v) => *v,
+            _ => panic!("missing Rebinding"),
+        };
+        assert_eq!(rebind, 64800); // 86400*3/4
+    }
+
+    // ── Test 22: offer contains SubnetMask, Router, ServerIdentifier ────
+    #[test]
+    fn test_build_offer_required_options() {
+        let server = make_server();
+        let discover = sample_discover();
+        let offer = build_offer(&discover, ip("192.168.1.50"), &server);
+        let opts = offer.opts();
+        assert!(opts.get(dhcproto::v4::OptionCode::SubnetMask).is_some());
+        assert!(opts.get(dhcproto::v4::OptionCode::Router).is_some());
+        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
+        match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
+            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Offer),
+            _ => panic!("wrong type"),
+        }
+    }
+
+    // ── Test 23: offer DNS — None→[router], Some→[dns] ─────────────────
+    #[test]
+    fn test_build_offer_dns_server() {
+        let server = make_server();
+        // Without explicit DNS
+        {
+            let mut cfg = server.config.write();
+            cfg.dns_server = None;
+        }
+        let offer = build_offer(&sample_discover(), ip("192.168.1.50"), &server);
+        let opts = offer.opts();
+        let dns = match opts.get(dhcproto::v4::OptionCode::DomainNameServer).unwrap() {
+            dhcproto::v4::DhcpOption::DomainNameServer(v) => v.clone(),
+            _ => panic!("missing DNS"),
+        };
+        assert_eq!(dns, vec![ip("192.168.1.1")]); // router fallback
+
+        // With explicit DNS
+        {
+            let mut cfg = server.config.write();
+            cfg.dns_server = Some(ip("1.1.1.1"));
+        }
+        let offer = build_offer(&sample_discover(), ip("192.168.1.50"), &server);
+        let opts = offer.opts();
+        let dns = match opts.get(dhcproto::v4::OptionCode::DomainNameServer).unwrap() {
+            dhcproto::v4::DhcpOption::DomainNameServer(v) => v.clone(),
+            _ => panic!("missing DNS"),
+        };
+        assert_eq!(dns, vec![ip("1.1.1.1")]);
+    }
+
+    // ── Test 24: ACK carries correct options + MessageType::Ack ─────────
+    #[test]
+    fn test_build_ack() {
+        let server = make_server();
+        let request = sample_discover();
+        let ack = build_ack(&request, ip("192.168.1.50"), &server);
+        let opts = ack.opts();
+        match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
+            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Ack),
+            _ => panic!("wrong type"),
+        }
+        assert!(opts.get(dhcproto::v4::OptionCode::SubnetMask).is_some());
+        assert!(opts.get(dhcproto::v4::OptionCode::Router).is_some());
+        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
+        assert!(opts.get(dhcproto::v4::OptionCode::AddressLeaseTime).is_some());
+        // yiaddr should be the offered IP
+        assert_eq!(ack.yiaddr(), ip("192.168.1.50"));
+    }
+
+    // ── Test 25: NAK has correct MessageType, yiaddr=0, ServerIdentifier ─
+    #[test]
+    fn test_build_nak() {
+        let server = make_server();
+        let request = sample_discover();
+        let nak = build_nak(&request, &server);
+        let opts = nak.opts();
+        match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
+            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Nak),
+            _ => panic!("wrong type"),
+        }
+        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
+        // yiaddr must be 0.0.0.0 for NAK
+        assert_eq!(nak.yiaddr(), Ipv4Addr::UNSPECIFIED);
+    }
+
+    // ======================================================================
+    // try_commit_lease tests (P1) — #4 fix regression tests
+    // ======================================================================
+
+    #[allow(dead_code)]
+    fn mac_simple(_a: u8) -> [u8; 6] { [0; 6] } // simplified: first byte varies
+    fn mac_a() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01] }
+    fn mac_b() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02] }
+
+    // ── Test 34: empty IP → committed, lease exists ─────────────────────
+    #[test]
+    fn test_commit_empty() {
+        let server = make_server();
+        let ok = server.try_commit_lease(mac_a(), ip("192.168.1.50"), 9999999999, None);
+        assert!(ok);
+        let leases = server.leases.read();
+        assert!(leases.contains_key(&mac_a()));
+        assert_eq!(leases.get(&mac_a()).unwrap().ip, ip("192.168.1.50"));
+    }
+
+    // ── Test 35: IP on different MAC → conflict, not overwritten ────────
+    #[test]
+    fn test_commit_conflict() {
+        let server = make_server();
+        // First MAC commits the IP
+        assert!(server.try_commit_lease(mac_a(), ip("192.168.1.50"), 9999999999, None));
+        // Second MAC tries same IP → conflict
+        assert!(!server.try_commit_lease(mac_b(), ip("192.168.1.50"), 9999999999, None));
+        // Lease should still belong to mac_a
+        let leases = server.leases.read();
+        assert_eq!(leases.get(&mac_a()).unwrap().ip, ip("192.168.1.50"));
+        assert!(leases.get(&mac_b()).is_none());
+    }
+
+    // ── Test 36: same MAC → renewal (expiry refreshed) ──────────────────
+    #[test]
+    fn test_commit_renew() {
+        let server = make_server();
+        assert!(server.try_commit_lease(mac_a(), ip("192.168.1.50"), 100, None));
+        // Renew with later expiry
+        assert!(server.try_commit_lease(mac_a(), ip("192.168.1.50"), 9999999999, None));
+        let leases = server.leases.read();
+        assert_eq!(leases.get(&mac_a()).unwrap().expires_at, 9999999999);
+    }
+
+    // ── Test 37: concurrent N tasks, same IP → exactly 1 winner ─────────
+    // We simulate sequentially (true concurrency would need threads)
+    #[test]
+    fn test_commit_concurrent_same_ip_single_winner() {
+        let server = make_server();
+        // Simulate N=10 concurrent commits for the same IP
+        let mut winners = 0;
+        for i in 0..10u8 {
+            let this_mac = [i, 0, 0, 0, 0, 0];
+            if server.try_commit_lease(this_mac, ip("192.168.1.50"), 9999999999, None) {
+                winners += 1;
+            }
+        }
+        assert_eq!(winners, 1);
+        // Only one lease exists
+        assert_eq!(server.leases.read().len(), 1);
+    }
+
+    // ======================================================================
+    // reclaim_expired tests (P1)
+    // ======================================================================
+
+    // ── Test 38: expired lease removed, IP released ─────────────────────
+    #[test]
+    fn test_reclaim_expired_lease() {
+        let server = make_server();
+        // Insert a lease with past expiry
+        server.leases.write().insert(mac_a(), Lease {
+            ip: ip("192.168.1.100"),
+            mac: mac_a(),
+            hostname: None,
+            expires_at: 1, // expired
+        });
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+        reclaim_expired(&server);
+        // Lease removed, IP back in pool
+        assert!(server.leases.read().is_empty());
+        // Pool should have released it: next_available returns it
+        let mut pool = server.pool.write();
+        let declined = HashSet::new();
+        assert_eq!(pool.next_available(&declined), Some(ip("192.168.1.100")));
+    }
+
+    // ── Test 39: expired offer removed, IP released ─────────────────────
+    #[test]
+    fn test_reclaim_expired_offer() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        server.offered.write().insert(ipu("192.168.1.100"), (now - 10, mac_a())); // expired offer
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+        reclaim_expired(&server);
+        // Offer removed
+        assert!(server.offered.read().is_empty());
+        // Pool released
+        let mut pool = server.pool.write();
+        let declined = HashSet::new();
+        assert_eq!(pool.next_available(&declined), Some(ip("192.168.1.100")));
+    }
+
+    // ── Test 40: expired declined entry removed ─────────────────────────
+    #[test]
+    fn test_reclaim_expired_declined() {
+        let server = make_server();
+        server.declined.write().insert(ipu("192.168.1.100"), 1); // expired
+        // Also insert a lease so pool allocates this IP
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+        reclaim_expired(&server);
+        // Declined entry removed
+        assert!(server.declined.read().is_empty());
+        // IP back in pool
+        let mut pool = server.pool.write();
+        let declined = HashSet::new();
+        assert_eq!(pool.next_available(&declined), Some(ip("192.168.1.100")));
+    }
 }
 
 

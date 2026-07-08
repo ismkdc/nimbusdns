@@ -15,7 +15,7 @@ use tracing::info;
 
 pub use forwarder::DnsForwarder;
 pub use cache::DnsCache;
-pub use dot::DotManager;
+pub use dot::{DotError, DotManager};
 pub use router::QueryRouter;
 
 use crate::AppState;

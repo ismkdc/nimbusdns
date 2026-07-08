@@ -390,3 +390,166 @@ impl RateLimiter {
         }
     }
 }
+
+// =============================================================================
+// Tests
+// =============================================================================
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use hickory_proto::op::ResponseCode;
+    use hickory_proto::rr::{Name, RecordType};
+
+    fn query_a(domain: &str) -> Message {
+        let mut msg = Message::query();
+        msg.add_query(hickory_proto::op::Query::query(
+            Name::from_utf8(domain).unwrap(),
+            RecordType::A,
+        ));
+        msg
+    }
+
+    fn query_aaaa(domain: &str) -> Message {
+        let mut msg = Message::query();
+        msg.add_query(hickory_proto::op::Query::query(
+            Name::from_utf8(domain).unwrap(),
+            RecordType::AAAA,
+        ));
+        msg
+    }
+
+    fn decode_response(result: QueryResult) -> Message {
+        match result {
+            QueryResult::Response(bytes) => Message::from_vec(&bytes).unwrap(),
+            _ => panic!("expected Response, got {:?}", result),
+        }
+    }
+
+    // ── Test 26: Null + A → 0.0.0.0, NoError ────────────────────────────
+    #[test]
+    fn test_null_a() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1234, &q, BlockingMode::Null, RecordType::A,
+            "0.0.0.0".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        // Should have one A answer with 0.0.0.0
+        assert_eq!(resp.answers.len(), 1);
+        let ans = &resp.answers[0];
+        assert_eq!(ans.record_type(), RecordType::A);
+        if let RData::A(a) = &ans.data {
+            assert_eq!(a.0, std::net::Ipv4Addr::new(0, 0, 0, 0));
+        } else {
+            panic!("expected A record");
+        }
+    }
+
+    // ── Test 27: Null + AAAA → :: ────────────────────────────────────────
+    #[test]
+    fn test_null_aaaa() {
+        let q = query_aaaa("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Null, RecordType::AAAA,
+            "::".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        assert_eq!(resp.answers.len(), 1);
+        assert_eq!(resp.answers[0].record_type(), RecordType::AAAA);
+    }
+
+    // ── Test 28: NXDOMAIN code ───────────────────────────────────────────
+    #[test]
+    fn test_nxdomain() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Nxdomain, RecordType::A,
+            "0.0.0.0".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NXDomain);
+        assert_eq!(resp.answers.len(), 0);
+    }
+
+    // ── Test 29: Refused code ────────────────────────────────────────────
+    #[test]
+    fn test_refused() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Refused, RecordType::A,
+            "0.0.0.0".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::Refused);
+    }
+
+    // ── Test 30: Nodata → no answers, NoError ────────────────────────────
+    #[test]
+    fn test_nodata() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Nodata, RecordType::A,
+            "0.0.0.0".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        assert_eq!(resp.answers.len(), 0);
+    }
+
+    // ── Test 31: IP mode + A + v4 IP → that IP ──────────────────────────
+    #[test]
+    fn test_ip_a_v4() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Ip, RecordType::A,
+            "192.0.2.1".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        assert_eq!(resp.answers.len(), 1);
+        if let RData::A(a) = &resp.answers[0].data {
+            assert_eq!(a.0, std::net::Ipv4Addr::new(192, 0, 2, 1));
+        } else {
+            panic!("expected A record");
+        }
+    }
+
+    // ── Test 32: IP mode + AAAA + v6 IP → that IP ─────────────────────────
+    #[test]
+    fn test_ip_aaaa_v6() {
+        let q = query_aaaa("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Ip, RecordType::AAAA,
+            "2001:db8::1".parse().unwrap(),
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        assert_eq!(resp.answers.len(), 1);
+        if let RData::AAAA(a) = &resp.answers[0].data {
+            assert_eq!(a.0, std::net::Ipv6Addr::new(0x2001, 0xdb8, 0, 0, 0, 0, 0, 1));
+        } else {
+            panic!("expected AAAA record");
+        }
+    }
+
+    // ── Test 33: IP mode + family mismatch (A query + v6 IP) → NULL ──────
+    #[test]
+    fn test_ip_family_mismatch_a_v6() {
+        let q = query_a("blocked.test");
+        let result = make_blocked_response(
+            1, &q, BlockingMode::Ip, RecordType::A,
+            "2001:db8::1".parse().unwrap(), // v6 IP, but query is A (v4)
+        );
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::NoError);
+        // Should fall back to NULL (0.0.0.0)
+        assert_eq!(resp.answers.len(), 1);
+        if let RData::A(a) = &resp.answers[0].data {
+            assert_eq!(a.0, std::net::Ipv4Addr::new(0, 0, 0, 0));
+        } else {
+            panic!("expected A record (NULL fallback)");
+        }
+    }
+}
