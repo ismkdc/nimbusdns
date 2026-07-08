@@ -5,7 +5,8 @@
 //   - One tokio task per upstream manages the TLS connection lifecycle
 //   - Queries are sent concurrently on the same connection
 //   - Responses matched to pending queries by DNS transaction ID
-//   - Auto-reconnect on connection failure, requeue pending queries
+//   - Auto-reconnect on connection failure; in-flight queries at disconnect
+//     fail fast with ConnectionClosed (caller / upstream-failover retries)
 
 use std::collections::HashMap;
 use std::net::SocketAddr;

@@ -239,11 +239,17 @@ async fn test_reconnect_after_drop() {
 
     // Second query — the old connection is dead; DoT reconnects to the
     // multi-connection server, which accepts a fresh TLS connection.
+    // A query that races into the closing window gets ConnectionClosed
+    // (see test_inflight_disconnect); the retry loop waits out reconnect.
     let q2 = make_query(2, "second.example.com");
-    let r2 = manager
-        .send_query(&upstream, &q2, Duration::from_secs(10))
-        .await
-        .expect("second query should succeed after reconnect");
+    let mut r2 = None;
+    for _ in 0..10 {
+        match manager.send_query(&upstream, &q2, Duration::from_secs(10)).await {
+            Ok(resp) => { r2 = Some(resp); break; }
+            Err(_) => tokio::time::sleep(Duration::from_millis(100)).await,
+        }
+    }
+    let r2 = r2.expect("second query should succeed after reconnect");
     assert_eq!(dns_id(&r2), 2, "response should have query2's ID");
 }
 
