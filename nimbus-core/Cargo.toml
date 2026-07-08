@@ -44,4 +44,4 @@ nix.workspace = true
 signal-hook-tokio = { workspace = true }
 
 [dev-dependencies]
-rcgen = "0.13"
+rcgen = "0.14"

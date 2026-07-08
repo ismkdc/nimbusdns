@@ -32,7 +32,7 @@ enum Mode {
 fn make_self_signed_cert() -> (Vec<u8>, Vec<u8>) {
     use rcgen::*;
     let cert = generate_simple_self_signed(vec!["localhost".into()]).unwrap();
-    (cert.cert.der().to_vec(), cert.key_pair.serialize_der())
+    (cert.cert.der().to_vec(), cert.signing_key.serialize_der())
 }
 
 fn make_client_config(ca_der: &[u8]) -> rustls::ClientConfig {
