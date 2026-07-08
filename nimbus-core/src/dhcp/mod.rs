@@ -1000,21 +1000,28 @@ mod tests {
         assert_eq!(leases.get(&mac_a()).unwrap().expires_at, 9999999999);
     }
 
-    // ── Test 37: concurrent N tasks, same IP → exactly 1 winner ─────────
-    // We simulate sequentially (true concurrency would need threads)
+    // ── Test 37: concurrent N threads, same IP → exactly 1 winner ────
+    // Uses real OS threads to actually race for the write lock.
     #[test]
     fn test_commit_concurrent_same_ip_single_winner() {
-        let server = make_server();
-        // Simulate N=10 concurrent commits for the same IP
-        let mut winners = 0;
-        for i in 0..10u8 {
-            let this_mac = [i, 0, 0, 0, 0, 0];
-            if server.try_commit_lease(this_mac, ip("192.168.1.50"), 9999999999, None) {
-                winners += 1;
+        let server = Arc::new(make_server());
+        const N: usize = 20;
+        let winner = std::sync::atomic::AtomicUsize::new(0);
+
+        std::thread::scope(|s| {
+            for i in 0..N {
+                let sv = Arc::clone(&server);
+                let w = &winner;
+                s.spawn(move || {
+                    let mac = [i as u8, 0, 0, 0, 0, 0];
+                    if sv.try_commit_lease(mac, ip("192.168.1.50"), 9999999999, None) {
+                        w.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    }
+                });
             }
-        }
-        assert_eq!(winners, 1);
-        // Only one lease exists
+        });
+
+        assert_eq!(winner.load(std::sync::atomic::Ordering::Relaxed), 1);
         assert_eq!(server.leases.read().len(), 1);
     }
 

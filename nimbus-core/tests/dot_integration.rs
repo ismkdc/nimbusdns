@@ -17,6 +17,7 @@ use nimbus_core::dns::{DotError, DotManager};
 
 // ── Fake DoT Server ──────────────────────────────────────────────────────────
 
+#[derive(Clone)]
 enum Mode {
     /// Normal: respond to each query with an echoed ID+question
     Normal,
@@ -47,6 +48,36 @@ fn make_client_config(ca_der: &[u8]) -> rustls::ClientConfig {
 /// Run a fake DoT server on a random port. Returns the port and the
 /// certificate DER (so the caller can trust the same cert).
 /// The server handles exactly one TLS connection then exits.
+async fn handle_connection(tls: tokio_rustls::server::TlsStream<tokio::net::TcpStream>, mode: &Mode) {
+    let (mut reader, mut writer) = tokio::io::split(tls);
+    match mode {
+        Mode::Drop => (),
+        Mode::RespondThenDrop => {
+            if let Ok(data) = read_dns_msg_srv(&mut reader).await {
+                let response = build_response(&data);
+                let _ = write_dns_msg_srv(&mut writer, &response).await;
+            }
+        }
+        Mode::DelayFirst { delay } => {
+            if let Ok(data) = read_dns_msg_srv(&mut reader).await {
+                tokio::time::sleep(*delay).await;
+                let response = build_response(&data);
+                let _ = write_dns_msg_srv(&mut writer, &response).await;
+            }
+            if let Ok(data) = read_dns_msg_srv(&mut reader).await {
+                let response = build_response(&data);
+                let _ = write_dns_msg_srv(&mut writer, &response).await;
+            }
+        }
+        Mode::Normal => {
+            while let Ok(data) = read_dns_msg_srv(&mut reader).await {
+                let response = build_response(&data);
+                let _ = write_dns_msg_srv(&mut writer, &response).await;
+            }
+        }
+    }
+}
+
 async fn run_fake_dot_server(mode: Mode) -> (u16, Vec<u8>) {
     let (cert_der, key_der) = make_self_signed_cert();
     let ca_for_client = cert_der.clone();
@@ -64,40 +95,19 @@ async fn run_fake_dot_server(mode: Mode) -> (u16, Vec<u8>) {
     let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
     let port = listener.local_addr().unwrap().port();
 
+    let mode = Arc::new(mode);
+
     tokio::spawn(async move {
-        let (tcp, _) = listener.accept().await.expect("accept");
-        let tls = tokio_rustls::TlsAcceptor::from(Arc::new(server_config))
-            .accept(tcp)
-            .await
-            .expect("TLS accept failed");
-
-        let (mut reader, mut writer) = tokio::io::split(tls);
-
-        match mode {
-            Mode::Drop => (),
-            Mode::RespondThenDrop => {
-                if let Ok(data) = read_dns_msg_srv(&mut reader).await {
-                    let response = build_response(&data);
-                    let _ = write_dns_msg_srv(&mut writer, &response).await;
-                }
-            }
-            Mode::DelayFirst { delay } => {
-                if let Ok(data) = read_dns_msg_srv(&mut reader).await {
-                    tokio::time::sleep(delay).await;
-                    let response = build_response(&data);
-                    let _ = write_dns_msg_srv(&mut writer, &response).await;
-                }
-                if let Ok(data) = read_dns_msg_srv(&mut reader).await {
-                    let response = build_response(&data);
-                    let _ = write_dns_msg_srv(&mut writer, &response).await;
-                }
-            }
-            Mode::Normal => {
-                while let Ok(data) = read_dns_msg_srv(&mut reader).await {
-                    let response = build_response(&data);
-                    let _ = write_dns_msg_srv(&mut writer, &response).await;
-                }
-            }
+        loop {
+            let (tcp, _) = listener.accept().await.expect("accept");
+            let tls = tokio_rustls::TlsAcceptor::from(Arc::new(server_config.clone()))
+                .accept(tcp)
+                .await
+                .expect("TLS accept failed");
+            let mode = Arc::clone(&mode);
+            tokio::spawn(async move {
+                handle_connection(tls, &mode).await;
+            });
         }
     });
 
@@ -208,7 +218,7 @@ async fn test_basic_query_response() {
 }
 
 /// Test 42: Reconnect (#1) — server disconnects after first query,
-/// second query gets a new connection and succeeds.
+/// second query reconnects on a fresh connection and succeeds.
 #[tokio::test]
 async fn test_reconnect_after_drop() {
     let (port, ca) = run_fake_dot_server(Mode::RespondThenDrop).await;
@@ -220,27 +230,21 @@ async fn test_reconnect_after_drop() {
         hostname: "localhost".into(),
     };
 
-    // First query succeeds (server responds then drops)
+    // First query succeeds (server responds then drops the connection)
     let q1 = make_query(1, "first.example.com");
     let r1 = manager
         .send_query(&upstream, &q1, Duration::from_secs(5))
         .await;
     assert!(r1.is_ok(), "first query should succeed");
 
-    // Second query — the old connection is dead; DoT should reconnect.
-    // The simple server only handles one connection, so the second query
-    // may either succeed (if the task loop reconnects) or get
-    // ConnectionClosed (single-connection server limitation).
+    // Second query — the old connection is dead; DoT reconnects to the
+    // multi-connection server, which accepts a fresh TLS connection.
     let q2 = make_query(2, "second.example.com");
     let r2 = manager
-        .send_query(&upstream, &q2, Duration::from_secs(5))
-        .await;
-    match r2 {
-        Ok(resp) => assert_eq!(dns_id(&resp), 2),
-        Err(DotError::ConnectionClosed) => { /* acceptable — single-connection server */ }
-        Err(DotError::Timeout) => { /* acceptable — reconnect sleep may exceed timeout */ }
-        Err(e) => panic!("unexpected error: {:?}", e),
-    }
+        .send_query(&upstream, &q2, Duration::from_secs(10))
+        .await
+        .expect("second query should succeed after reconnect");
+    assert_eq!(dns_id(&r2), 2, "response should have query2's ID");
 }
 
 /// Test 43: In-flight disconnect → caller gets ConnectionClosed
