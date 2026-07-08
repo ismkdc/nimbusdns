@@ -88,6 +88,28 @@ jobs:
             nimbusdns-${{ matrix.suffix }}.zip
           if-no-files-found: error
 
+  # -- Run tests ---------------------------------------------------------
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Linux deps
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq pkg-config libsqlite3-dev libssl-dev
+
+      - name: Run tests
+        run: cargo test -p nimbus-core
+
+      - name: Clippy
+        run: cargo clippy -p nimbus-core --tests -- -D warnings
+
   # -- Build & push Docker image per arch (native, no QEMU) ------------
   docker:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
