@@ -39,14 +39,21 @@ impl DnsForwarder {
     ) -> Result<Message, ForwardError> {
         let query_bytes = query.to_vec().map_err(|e| ForwardError::Encode(e.to_string()))?;
 
-        match upstream {
+        let response = match upstream {
             DnsUpstream::Plain { address, port } => {
-                self.forward_plain(&query_bytes, *address, *port, timeout_duration).await
+                self.forward_plain(&query_bytes, *address, *port, timeout_duration).await?
             }
             DnsUpstream::Tls { .. } => {
-                self.forward_tls(&query_bytes, upstream, timeout_duration).await
+                self.forward_tls(&query_bytes, upstream, timeout_duration).await?
             }
-        }
+        };
+
+        // Validate that the response question matches the query question
+        // to prevent a mismatched response (e.g. from an ID collision) from
+        // being cached or returned to the client.
+        validate_response_question(query, &response)?;
+
+        Ok(response)
     }
 
     /// Each query gets its own ephemeral UDP socket - eliminates ID collision race
@@ -133,6 +140,18 @@ impl DnsForwarder {
     }
 }
 
+/// Validate that the response's first question matches the query's first question
+/// (name + record type). This prevents a mismatched response — e.g. from an ID
+/// collision in DoT — from being cached or returned to the client.
+fn validate_response_question(query: &Message, response: &Message) -> Result<(), ForwardError> {
+    let q = query.queries.first().ok_or(ForwardError::ResponseMismatch)?;
+    let r = response.queries.first().ok_or(ForwardError::ResponseMismatch)?;
+    if q.name() != r.name() || q.query_type() != r.query_type() {
+        return Err(ForwardError::ResponseMismatch);
+    }
+    Ok(())
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum ForwardError {
     #[error("Query encoding failed: {0}")]
@@ -147,4 +166,6 @@ pub enum ForwardError {
     Dot(String),
     #[error("Forwarder not initialized")]
     NotInitialized,
+    #[error("Response question does not match query")]
+    ResponseMismatch,
 }

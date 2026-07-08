@@ -393,24 +393,9 @@ async fn handle_dhcp_packet(
                     return;
                 }
 
-                // Conflict check: is this IP already leased to a DIFFERENT MAC?
-                let conflict = {
-                    let leases = server.leases.read();
-                    leases.iter().any(|(&k, lease)| {
-                        lease.ip == ip && k != mac && lease.expires_at > chrono::Utc::now().timestamp()
-                    })
-                };
-                if conflict {
-                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP conflict)",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                    let nak = build_nak(&msg, &server);
-                    if let Ok(bytes) = encode_message(&nak) {
-                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
-                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
-                    }
-                    return;
-                }
-
+                // Atomically: conflict-check + lease-insert under a single write lock.
+                // This prevents two concurrent REQUESTs for the same IP from both
+                // passing the check and creating duplicate leases (latent race in DORA).
                 let (_lease_time, expires, hostname) = {
                     let cfg = server.config.read();
                     let lt = cfg.lease_time;
@@ -422,12 +407,37 @@ async fn handle_dhcp_packet(
                     (lt, chrono::Utc::now().timestamp() + lt as i64, host)
                 };
 
+                // Check + insert under a single write lock, but drop the lock
+                // before any .await point (parking_lot guards are not Send).
+                let conflict = {
+                    let mut leases = server.leases.write();
+                    let found = leases.iter().any(|(&k, lease)| {
+                        lease.ip == ip && k != mac && lease.expires_at > chrono::Utc::now().timestamp()
+                    });
+                    if found {
+                        true
+                    } else {
+                        let lease = Lease { ip, mac, hostname: hostname.clone(), expires_at: expires };
+                        leases.insert(mac, lease);
+                        false
+                    }
+                };
+
+                if conflict {
+                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP conflict)",
+                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    let nak = build_nak(&msg, &server);
+                    if let Ok(bytes) = encode_message(&nak) {
+                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
+                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
+                    }
+                    return;
+                }
+
                 // Sync pool: mark IP as allocated (in case it was free)
                 server.pool.write().mark_allocated(ip);
                 // Remove from offered table (if it was an initial offer)
                 server.offered.write().remove(&u32::from(ip));
-                let lease = Lease { ip, mac, hostname: hostname.clone(), expires_at: expires };
-                server.leases.write().insert(mac, lease);
                 persist_lease(&server, &mac, ip, &hostname, expires);
 
                 let response = build_ack(&msg, ip, &server);

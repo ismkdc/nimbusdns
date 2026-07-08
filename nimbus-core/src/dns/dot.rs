@@ -171,10 +171,10 @@ async fn tls_connection_task(
 ) {
     info!("DoT task started for {}", address);
 
-    // Shared pending map: reader writes responses, writer reads for matching
-    let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
-
     loop {
+        // Each connection gets its own pending map.
+        // This prevents a stale (zombie) reader from draining the new connection's in-flight queries.
+        let pending: PendingMap = Arc::new(Mutex::new(HashMap::new()));
         // Establish TLS connection
         let tls = match connect_tls(&tls_config, &server_name, &address).await {
             Ok(t) => t,
@@ -230,6 +230,7 @@ async fn tls_connection_task(
         use tokio::io::AsyncWriteExt;
 
         // Re-establish: drain the channel into writer until reader fails
+        let mut pending_clean_counter: u32 = 0;
         loop {
             tokio::select! {
                 query = query_rx.recv() => {
@@ -261,15 +262,26 @@ async fn tls_connection_task(
                     };
                     match writer.write_all(&data).await {
                         Ok(_) => {
-                            pending.lock().insert(conn_id, PendingEntry {
-                                reply_tx,
-                                original_dns_id,
-                            });
+                            {
+                                let mut map = pending.lock();
+                                map.insert(conn_id, PendingEntry {
+                                    reply_tx,
+                                    original_dns_id,
+                                });
+                                // Periodically sweep stale entries whose caller timed out
+                                // (reply_tx.is_closed() when the oneshot receiver was dropped)
+                                pending_clean_counter = pending_clean_counter.wrapping_add(1);
+                                if pending_clean_counter.is_multiple_of(64) {
+                                    map.retain(|_id, entry| !entry.reply_tx.is_closed());
+                                }
+                            }
                             debug!("DoT sent query id={} to {}", conn_id, address);
                         }
                         Err(e) => {
                             error!("DoT write failed for {}: {}", address, e);
                             let _ = reply_tx.send(Err(DotError::Io(e)));
+                            // Abort the reader so it doesn't hang around with its own pending reference
+                            reader_handle.abort();
                             break;
                         }
                     }
