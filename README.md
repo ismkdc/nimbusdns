@@ -6,7 +6,7 @@ DNS-over-TLS server with web panel, DHCP, ad blocking, and admin auth.
 
 - **DNS-over-TLS (DoT)** - Encrypted upstream DNS to Google, Cloudflare, Quad9, OpenDNS, Mullvad
 - **Ad Blocking** - StevenBlack hosts blocklist with auto-refresh
-- **Web Panel** - Dark theme, responsive, setup wizard, session auth + optional TOTP
+- **Web Panel** - Dark theme, responsive, setup wizard, session auth
 - **DHCP Server** - Built-in DHCP with IP pool management
 - **Query Log** - Searchable query history with overTime stats
 - **Performance** - Rust, LRU cache, batch DB writes, EDNS0, graceful shutdown

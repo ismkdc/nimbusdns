@@ -24,8 +24,6 @@ use tracing::{debug, error, info};
 use crate::config::DnsUpstream;
 
 const TLS_HANDSHAKE_TIMEOUT: Duration = Duration::from_secs(10);
-#[allow(dead_code)]
-const TLS_IO_TIMEOUT: Duration = Duration::from_secs(30);
 const MAX_DNS_SIZE: usize = 4096;
 const CHANNEL_BOUND: usize = 128;
 

@@ -900,7 +900,6 @@ async fn get_config(State(state): State<Arc<InternalState>>) -> (StatusCode, Jso
     if let Some(obj) = json.as_object_mut()
         && let Some(ws) = obj.get_mut("webserver").and_then(|v| v.as_object_mut()) {
             ws.remove("password-hash");
-            ws.remove("totp-secret");
         }
     api_ok(json)
 }
@@ -1105,7 +1104,7 @@ async fn get_blocklist_entries(
 /// GET /api/endpoints - list all available API endpoints
 async fn get_endpoints() -> (StatusCode, Json<serde_json::Value>) {
     let endpoints = vec![
-        "/api/auth", "/api/auth/session", "/api/auth/totp",
+        "/api/auth", "/api/auth/session",
         "/api/stats", "/api/stats/summary", "/api/stats/top_clients",
         "/api/stats/top_domains", "/api/stats/top_upstreams",
         "/api/stats/query_types", "/api/stats/recent_blocked",

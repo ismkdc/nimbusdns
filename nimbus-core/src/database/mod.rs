@@ -40,9 +40,6 @@ pub struct Database {
     pub gravity: Arc<GravityDb>,
     /// NIMBUS query database (query log, network table, sessions)
     pub nimbus_db: Arc<QueryDb>,
-    /// Configuration reference
-    #[allow(dead_code)]
-    config: Arc<crate::config::DatabaseConfig>,
 }
 
 impl Database {
@@ -56,7 +53,6 @@ impl Database {
         Ok(Self {
             gravity: Arc::new(gravity),
             nimbus_db: Arc::new(nimbus_db),
-            config: Arc::new(config.clone()),
         })
     }
 

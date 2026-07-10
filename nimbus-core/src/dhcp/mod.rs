@@ -176,10 +176,6 @@ impl IpPool {
     fn release(&mut self, ip: Ipv4Addr) {
         self.allocated.remove(&u32::from(ip));
     }
-    #[allow(dead_code)]
-    fn is_allocated(&self, ip: Ipv4Addr) -> bool {
-        self.allocated.contains(&u32::from(ip))
-    }
 }
 
 /// Encode a DHCP message to bytes using dhcproto's Encoder.
@@ -959,7 +955,6 @@ mod tests {
     // try_commit_lease tests (P1) — #4 fix regression tests
     // ======================================================================
 
-    #[allow(dead_code)]
     fn mac_simple(_a: u8) -> [u8; 6] { [0; 6] } // simplified: first byte varies
     fn mac_a() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01] }
     fn mac_b() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02] }

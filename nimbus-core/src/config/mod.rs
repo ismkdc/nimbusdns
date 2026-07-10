@@ -256,13 +256,6 @@ pub struct WebServerConfig {
     #[serde(default = "default_api_rate_limit")]
     pub api_rate_limit: u32,
 
-    /// Enable 2FA (TOTP)
-    #[serde(default)]
-    pub totp_enabled: bool,
-
-    /// TOTP secret (base32 encoded) for 2FA
-    #[serde(default, skip_serializing)]
-    pub totp_secret: Option<String>,
 }
 
 /// A parsed web server port entry
@@ -832,8 +825,6 @@ impl Default for WebServerConfig {
             password_hash: None,
             session_timeout: default_session_timeout(),
             api_rate_limit: default_api_rate_limit(),
-            totp_enabled: false,
-            totp_secret: None,
         }
     }
 }

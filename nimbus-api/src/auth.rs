@@ -1,7 +1,7 @@
 // =============================================================================
 // Authentication System
 // =============================================================================
-// Password verification, session management, TOTP 2FA, and rate limiting.
+// Password verification, session management, and rate limiting.
 // Used by the API server middleware and auth endpoints.
 
 use axum::{
@@ -10,7 +10,7 @@ use axum::{
     Json,
 };
 use dashmap::DashMap;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use argon2::Argon2;
 use password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString};
 use rand_core::OsRng;
@@ -84,7 +84,6 @@ impl IntoResponse for AuthError {
 
 /// Hash a password using Argon2id (memory-hard, salt auto-generated).
 /// Returns the PHC string format for storage.
-#[allow(dead_code)]
 pub fn hash_password(password: &str) -> Result<String, String> {
     let salt = SaltString::generate(&mut OsRng);
     let hash = Argon2::default()
@@ -241,15 +240,6 @@ impl AuthRateLimiter {
         self.attempts.remove(key);
     }
 
-    /// Clean up stale entries.
-    #[allow(dead_code)]
-    pub fn cleanup(&self) {
-        let now = chrono::Utc::now().timestamp();
-        self.attempts.retain(|_, timestamps| {
-            timestamps.retain(|t| *t > now - self.window_secs);
-            !timestamps.is_empty()
-        });
-    }
 }
 
 // =============================================================================
@@ -262,20 +252,4 @@ pub struct AuthRequest {
     pub password: Option<String>,
 }
 
-/// Session response returned on successful auth
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct SessionResponse {
-    pub sid: String,
-    pub valid: bool,
-    pub totp_enabled: bool,
-}
 
-/// TOTP status response
-#[derive(Debug, Serialize)]
-#[allow(dead_code)]
-pub struct TotpStatus {
-    pub enabled: bool,
-    pub secret: Option<String>,
-    pub uri: Option<String>,
-}
