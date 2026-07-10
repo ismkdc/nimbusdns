@@ -955,7 +955,6 @@ mod tests {
     // try_commit_lease tests (P1) — #4 fix regression tests
     // ======================================================================
 
-    fn mac_simple(_a: u8) -> [u8; 6] { [0; 6] } // simplified: first byte varies
     fn mac_a() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01] }
     fn mac_b() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02] }
 
