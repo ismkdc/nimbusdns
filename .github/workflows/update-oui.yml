@@ -30,36 +30,37 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v7
 
-      - name: Download latest IEEE OUI database
+      - name: Download OUI database
         id: download
         run: |
-          # Try multiple mirrors with retries
-          # Sources (in order of preference):
-          #   1. IEEE official (can be slow/unreachable from CI)
-          #   2. linuxnet.ca mirror (Debian ieee-data package mirror, very reliable)
-          DOWNLOAD_OK=false
-          for url in \
-            "https://standards-oui.ieee.org/oui/oui.txt" \
-            "https://linuxnet.ca/ieee/oui.txt"; do
-            echo "Trying: $url"
-            if curl -sL --retry 3 --retry-delay 5 --connect-timeout 30 \
-              -o /tmp/oui_download.txt "$url"; then
-              SIZE=$(wc -c < /tmp/oui_download.txt)
-              if [ "$SIZE" -gt 10000 ]; then
-                echo "Success ($SIZE bytes)"
-                DOWNLOAD_OK=true
-                break
-              fi
-            fi
-            echo "Failed: $url"
-          done
+          # Primary source: Wireshark's manuf file on GitHub
+          # (guaranteed reachable from GitHub Actions)
+          echo "Downloading from Wireshark manuf (GitHub)..."
+          curl -sL --retry 3 --retry-delay 5 \
+            -o /tmp/manuf.txt \
+            "https://raw.githubusercontent.com/wireshark/wireshark/master/manuf"
 
-          if [ "$DOWNLOAD_OK" != "true" ]; then
-            echo "All download sources failed!"
+          SIZE=$(wc -c < /tmp/manuf.txt)
+          if [ "$SIZE" -lt 10000 ]; then
+            echo "Download failed or too small ($SIZE bytes)"
             exit 1
           fi
+          echo "Downloaded: $SIZE bytes"
 
-          cp /tmp/oui_download.txt /tmp/oui.txt
+          # Convert Wireshark manuf format to IEEE oui.txt format
+          # Wireshark format: "00:00:00\tVendor\t# comment"
+          # IEEE format:     "00-00-00   (hex)\t\tVENDOR"
+          awk -F '\t' '
+            /^[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]/ {
+              gsub(/:/, "-", $1)
+              gsub(/#.*/, "", $2)
+              gsub(/^[ \t]+|[ \t]+$/, "", $2)
+              if ($2 != "") print $1 "   (hex)\t\t" $2
+            }
+          ' /tmp/manuf.txt > /tmp/oui.txt
+
+          ENTRY_COUNT=$(wc -l < /tmp/oui.txt)
+          echo "Converted: $ENTRY_COUNT entries"
           head -3 /tmp/oui.txt
           echo "size=$(wc -c < /tmp/oui.txt)" >> "$GITHUB_OUTPUT"
 
