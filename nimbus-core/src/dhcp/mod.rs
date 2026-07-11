@@ -98,6 +98,7 @@ pub struct Lease {
     pub ip: Ipv4Addr,
     pub mac: [u8; 6],
     pub hostname: Option<String>,
+    pub vendor: Option<String>,
     pub expires_at: i64,
 }
 
@@ -133,7 +134,7 @@ impl DhcpServer {
         if conflict {
             return false;
         }
-        leases.insert(mac, Lease { ip, mac, hostname, expires_at });
+        leases.insert(mac, Lease { ip, mac, hostname, vendor: None, expires_at });
         true
     }
 }
@@ -694,6 +695,7 @@ fn load_persisted_leases(db: &Arc<crate::database::queries::QueryDb>, pool_start
                 ip,
                 mac,
                 hostname: if hostname.is_empty() { None } else { Some(hostname) },
+                vendor: None,
                 expires_at,
             });
         }
@@ -1032,6 +1034,7 @@ mod tests {
             ip: ip("192.168.1.100"),
             mac: mac_a(),
             hostname: None,
+            vendor: None,
             expires_at: 1, // expired
         });
         server.pool.write().mark_allocated(ip("192.168.1.100"));

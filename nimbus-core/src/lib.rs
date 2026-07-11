@@ -16,6 +16,7 @@ pub mod dns;
 pub mod blocking;
 pub mod capabilities;
 pub mod dhcp;
+pub mod oui;
 pub mod over_time;
 
 use std::sync::Arc;
@@ -41,6 +42,8 @@ pub struct AppState {
     pub dhcp_config: Option<Arc<parking_lot::RwLock<config::DhcpConfig>>>,
     /// Blocking engine (None until initialized in main)
     pub blocking: Option<Arc<blocking::BlockingEngine>>,
+    /// OUI vendor database (MAC → manufacturer lookup)
+    pub oui: Arc<oui::OuiDb>,
     /// Is the daemon running?
     pub running: AtomicBool,
 }
@@ -56,6 +59,7 @@ impl AppState {
             dhcp_server: None,
             dhcp_config: None,
             blocking: None,
+            oui: Arc::new(oui::OuiDb::new()),
             running: AtomicBool::new(true),
         }
     }
@@ -71,6 +75,7 @@ impl AppState {
             dhcp_server: None,
             dhcp_config: None,
             blocking: None,
+            oui: Arc::new(oui::OuiDb::new()),
             running: AtomicBool::new(true),
         }
     }

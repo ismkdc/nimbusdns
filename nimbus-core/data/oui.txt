@@ -1,0 +1,915 @@
+# Test OUI database - IEEE OUI listing (sample)
+# Full version is downloaded by GitHub Action
+#
+00-00-00   (hex)		XEROX CORPORATION
+00-00-01   (hex)		XEROX CORPORATION
+00-00-0C   (hex)		CISCO SYSTEMS, INC.
+00-00-0E   (hex)		FUJITSU LIMITED
+00-00-1A   (hex)		AMD
+00-00-1B   (hex)		NOVEL, INC.
+00-00-1C   (hex)		ALCATELLUCENT
+00-00-1D   (hex)		FUJITSU LIMITED
+00-00-21   (hex)		DELL INC.
+00-00-22   (hex)		DATARAM CORPORATION
+00-00-24   (hex)		APPLE, INC.
+00-00-25   (hex)		DEC (DIGITAL EQUIPMENT CORPORATION)
+00-00-26   (hex)		IBM CORP.
+00-00-27   (hex)		IBM CORP.
+00-00-2A   (hex)		TRW - SIEMENS
+00-00-2D   (hex)		MITSUBISHI ELECTRONICS
+00-00-2E   (hex)		SYNTREX, INC.
+00-00-2F   (hex)		ADAPTEC, INC.
+00-00-30   (hex)		WESTERN DIGITAL CORPORATION
+00-00-31   (hex)		AT&T COMPUTER SYSTEMS
+00-00-32   (hex)		BELKIN COMPONENTS
+00-00-33   (hex)		INTERNATIONAL BUSINESS MACHINES
+00-00-34   (hex)		MULTITECH SYSTEMS, INC.
+00-00-35   (hex)		ADVANCED MICRO DEVICES
+00-00-36   (hex)		NOVEL, INC.
+00-00-37   (hex)		FUJITSU LIMITED
+00-00-38   (hex)		ZEINET
+00-00-39   (hex)		FUJITSU LIMITED
+00-00-3A   (hex)		STRATUS COMPUTER
+00-00-3B   (hex)		AMPERIF CORPORATION
+00-00-3C   (hex)		INTERNATIONAL BUSINESS MACHINES
+00-00-3D   (hex)		COMPAQ COMPUTER CORPORATION
+00-00-3E   (hex)		MOTOROLA, INC.
+00-00-3F   (hex)		FUJITSU LIMITED
+00-00-41   (hex)		INTERNATIONAL BUSINESS MACHINES
+00-00-42   (hex)		STRATUS COMPUTER
+00-00-43   (hex)		APPLE, INC.
+00-00-44   (hex)		HEKIMIAN LABORATORIES, INC.
+00-00-45   (hex)		INTERNATIONAL BUSINESS MACHINES
+00-00-46   (hex)		FUJITSU LIMITED
+00-00-47   (hex)		FLUITSU LIMITED
+00-00-48   (hex)		UNISYS CORPORATION
+00-00-49   (hex)		FLUITSU LIMITED
+00-00-4A   (hex)		APPLE, INC.
+00-00-4B   (hex)		APPLE, INC.
+00-00-4C   (hex)		APPLE, INC.
+00-00-4D   (hex)		NOVEL, INC.
+00-00-4E   (hex)		FUJITSU LIMITED
+00-00-4F   (hex)		APPLE, INC.
+00-00-50   (hex)		APPLE, INC.
+00-00-51   (hex)		APPLE, INC.
+00-00-52   (hex)		APPLE, INC.
+00-00-53   (hex)		APPLE, INC.
+00-00-54   (hex)		APPLE, INC.
+00-00-55   (hex)		APPLE, INC.
+00-00-56   (hex)		APPLE, INC.
+00-00-57   (hex)		APPLE, INC.
+00-00-58   (hex)		APPLE, INC.
+00-00-59   (hex)		APPLE, INC.
+00-00-5A   (hex)		APPLE, INC.
+00-00-5B   (hex)		APPLE, INC.
+00-00-5C   (hex)		APPLE, INC.
+00-00-5D   (hex)		APPLE, INC.
+00-00-5E   (hex)		APPLE, INC.
+00-00-5F   (hex)		APPLE, INC.
+00-00-60   (hex)		APPLE, INC.
+00-00-61   (hex)		APPLE, INC.
+00-00-62   (hex)		APPLE, INC.
+00-00-63   (hex)		APPLE, INC.
+00-00-64   (hex)		APPLE, INC.
+00-00-65   (hex)		APPLE, INC.
+00-00-66   (hex)		APPLE, INC.
+00-00-67   (hex)		APPLE, INC.
+00-00-68   (hex)		APPLE, INC.
+00-00-69   (hex)		APPLE, INC.
+00-00-6A   (hex)		APPLE, INC.
+00-00-6B   (hex)		APPLE, INC.
+00-00-6C   (hex)		APPLE, INC.
+00-00-6D   (hex)		APPLE, INC.
+00-00-6E   (hex)		APPLE, INC.
+00-00-6F   (hex)		APPLE, INC.
+00-00-70   (hex)		APPLE, INC.
+00-00-71   (hex)		APPLE, INC.
+00-00-72   (hex)		APPLE, INC.
+00-00-73   (hex)		APPLE, INC.
+00-00-74   (hex)		APPLE, INC.
+00-00-75   (hex)		APPLE, INC.
+00-00-76   (hex)		APPLE, INC.
+00-00-77   (hex)		APPLE, INC.
+00-00-78   (hex)		APPLE, INC.
+00-00-7A   (hex)		APPLE, INC.
+00-00-7E   (hex)		APPLE, INC.
+00-00-80   (hex)		APPLE, INC.
+00-00-81   (hex)		APPLE, INC.
+00-00-82   (hex)		APPLE, INC.
+00-00-83   (hex)		APPLE, INC.
+00-00-84   (hex)		APPLE, INC.
+00-00-85   (hex)		APPLE, INC.
+00-00-86   (hex)		APPLE, INC.
+00-00-87   (hex)		APPLE, INC.
+00-00-88   (hex)		APPLE, INC.
+00-00-89   (hex)		APPLE, INC.
+00-00-8A   (hex)		APPLE, INC.
+00-00-8B   (hex)		APPLE, INC.
+00-00-8C   (hex)		APPLE, INC.
+00-00-8D   (hex)		APPLE, INC.
+00-00-8E   (hex)		APPLE, INC.
+00-00-8F   (hex)		APPLE, INC.
+00-00-90   (hex)		APPLE, INC.
+00-00-91   (hex)		APPLE, INC.
+00-00-92   (hex)		APPLE, INC.
+00-00-93   (hex)		APPLE, INC.
+00-00-94   (hex)		APPLE, INC.
+00-00-95   (hex)		APPLE, INC.
+00-00-96   (hex)		APPLE, INC.
+00-00-97   (hex)		APPLE, INC.
+00-00-98   (hex)		APPLE, INC.
+00-00-99   (hex)		APPLE, INC.
+00-00-9A   (hex)		APPLE, INC.
+00-00-9B   (hex)		APPLE, INC.
+00-00-9C   (hex)		APPLE, INC.
+00-00-9D   (hex)		APPLE, INC.
+00-00-9E   (hex)		APPLE, INC.
+00-00-9F   (hex)		APPLE, INC.
+00-00-A0   (hex)		APPLE, INC.
+00-00-A1   (hex)		APPLE, INC.
+00-00-A2   (hex)		APPLE, INC.
+00-00-A3   (hex)		APPLE, INC.
+00-00-A4   (hex)		APPLE, INC.
+00-00-A5   (hex)		APPLE, INC.
+00-00-A6   (hex)		APPLE, INC.
+00-00-A7   (hex)		APPLE, INC.
+00-00-A8   (hex)		APPLE, INC.
+00-00-A9   (hex)		APPLE, INC.
+00-00-AA   (hex)		APPLE, INC.
+00-00-AB   (hex)		APPLE, INC.
+00-00-AC   (hex)		APPLE, INC.
+00-00-AD   (hex)		APPLE, INC.
+00-00-AE   (hex)		APPLE, INC.
+00-00-AF   (hex)		APPLE, INC.
+00-00-B0   (hex)		APPLE, INC.
+00-00-B1   (hex)		APPLE, INC.
+00-00-B2   (hex)		APPLE, INC.
+00-00-B3   (hex)		APPLE, INC.
+00-00-B4   (hex)		APPLE, INC.
+00-00-B5   (hex)		APPLE, INC.
+00-00-B6   (hex)		APPLE, INC.
+00-00-B7   (hex)		APPLE, INC.
+00-00-B8   (hex)		APPLE, INC.
+00-00-B9   (hex)		APPLE, INC.
+00-00-BA   (hex)		APPLE, INC.
+00-00-BB   (hex)		APPLE, INC.
+00-00-BC   (hex)		APPLE, INC.
+00-00-BD   (hex)		APPLE, INC.
+00-00-BE   (hex)		APPLE, INC.
+00-00-BF   (hex)		APPLE, INC.
+00-00-C0   (hex)		APPLE, INC.
+00-00-C1   (hex)		APPLE, INC.
+00-00-C2   (hex)		APPLE, INC.
+00-00-C3   (hex)		APPLE, INC.
+00-00-C4   (hex)		APPLE, INC.
+00-00-C5   (hex)		APPLE, INC.
+00-00-C6   (hex)		APPLE, INC.
+00-00-C7   (hex)		APPLE, INC.
+00-00-C8   (hex)		APPLE, INC.
+00-00-C9   (hex)		APPLE, INC.
+00-00-CA   (hex)		APPLE, INC.
+00-00-CB   (hex)		APPLE, INC.
+00-00-CC   (hex)		APPLE, INC.
+00-00-CD   (hex)		APPLE, INC.
+00-00-CE   (hex)		APPLE, INC.
+00-00-CF   (hex)		APPLE, INC.
+00-00-D0   (hex)		APPLE, INC.
+00-00-D1   (hex)		APPLE, INC.
+00-00-D2   (hex)		APPLE, INC.
+00-00-D3   (hex)		APPLE, INC.
+00-00-D4   (hex)		APPLE, INC.
+00-00-D5   (hex)		APPLE, INC.
+00-00-D6   (hex)		APPLE, INC.
+00-00-D7   (hex)		APPLE, INC.
+00-00-D8   (hex)		APPLE, INC.
+00-00-D9   (hex)		APPLE, INC.
+00-00-DA   (hex)		APPLE, INC.
+00-00-DB   (hex)		APPLE, INC.
+00-00-DC   (hex)		APPLE, INC.
+00-00-DD   (hex)		APPLE, INC.
+00-00-DE   (hex)		APPLE, INC.
+00-00-DF   (hex)		APPLE, INC.
+00-00-E0   (hex)		APPLE, INC.
+00-00-E1   (hex)		APPLE, INC.
+00-00-E2   (hex)		APPLE, INC.
+00-00-E3   (hex)		APPLE, INC.
+00-00-E4   (hex)		APPLE, INC.
+00-00-E5   (hex)		APPLE, INC.
+00-00-E6   (hex)		APPLE, INC.
+00-00-E7   (hex)		APPLE, INC.
+00-00-E8   (hex)		APPLE, INC.
+00-00-E9   (hex)		APPLE, INC.
+00-00-EA   (hex)		APPLE, INC.
+00-00-EB   (hex)		APPLE, INC.
+00-00-EC   (hex)		APPLE, INC.
+00-00-ED   (hex)		APPLE, INC.
+00-00-EE   (hex)		APPLE, INC.
+00-00-EF   (hex)		APPLE, INC.
+00-00-F0   (hex)		APPLE, INC.
+00-00-F1   (hex)		APPLE, INC.
+00-00-F2   (hex)		APPLE, INC.
+00-00-F3   (hex)		APPLE, INC.
+00-00-F4   (hex)		APPLE, INC.
+00-00-F5   (hex)		APPLE, INC.
+00-00-F6   (hex)		APPLE, INC.
+00-00-F7   (hex)		APPLE, INC.
+00-00-F8   (hex)		APPLE, INC.
+00-00-F9   (hex)		APPLE, INC.
+00-00-FA   (hex)		APPLE, INC.
+00-00-FB   (hex)		APPLE, INC.
+00-00-FC   (hex)		APPLE, INC.
+00-00-FD   (hex)		APPLE, INC.
+00-00-FE   (hex)		APPLE, INC.
+00-00-FF   (hex)		APPLE, INC.
+3C:22:FB   (hex)		APPLE, INC.
+00:1B:63   (hex)		APPLE, INC.
+00:23:6C   (hex)		APPLE, INC.
+00:1E:C2   (hex)		APPLE, INC.
+00:26:08   (hex)		APPLE, INC.
+00:23:DF   (hex)		APPLE, INC.
+00:25:BC   (hex)		APPLE, INC.
+00:1E:52   (hex)		APPLE, INC.
+00:1F:5B   (hex)		APPLE, INC.
+00:1F:F3   (hex)		APPLE, INC.
+00:21:E9   (hex)		APPLE, INC.
+00:22:41   (hex)		APPLE, INC.
+00:23:32   (hex)		APPLE, INC.
+00:24:34   (hex)		APPLE, INC.
+00:25:00   (hex)		APPLE, INC.
+00:25:4B   (hex)		APPLE, INC.
+00:26:08   (hex)		APPLE, INC.
+00:26:B0   (hex)		APPLE, INC.
+00:1D:4F   (hex)		APPLE, INC.
+00:1D:72   (hex)		APPLE, INC.
+00:1C:B3   (hex)		APPLE, INC.
+00:1F:5B   (hex)		APPLE, INC.
+00:24:36   (hex)		SAMSUNG ELECTRONICS
+00:24:90   (hex)		SAMSUNG ELECTRONICS
+00:25:8B   (hex)		SAMSUNG ELECTRONICS
+00:26:37   (hex)		SAMSUNG ELECTRONICS
+00:26:5E   (hex)		SAMSUNG ELECTRONICS
+00:14:22   (hex)		DELTA ELECTRONICS
+10:DD:B1   (hex)		Apple, Inc.
+34:15:13   (hex)		Apple, Inc.
+34:A8:4E   (hex)		Apple, Inc.
+34:E0:CF   (hex)		Apple, Inc.
+38:C9:86   (hex)		Apple, Inc.
+3C:07:54   (hex)		Apple, Inc.
+3C:15:C2   (hex)		Apple, Inc.
+3C:22:FB   (hex)		Apple, Inc.
+40:6C:8F   (hex)		Apple, Inc.
+44:00:10   (hex)		Apple, Inc.
+44:D8:84   (hex)		Apple, Inc.
+48:43:7C   (hex)		Apple, Inc.
+48:60:5F   (hex)		Apple, Inc.
+48:E1:AF   (hex)		Apple, Inc.
+4C:32:75   (hex)		Apple, Inc.
+50:3A:7F   (hex)		Apple, Inc.
+54:AE:27   (hex)		Apple, Inc.
+58:55:CA   (hex)		Apple, Inc.
+5C:96:56   (hex)		Apple, Inc.
+5C:E9:38   (hex)		Apple, Inc.
+60:33:4B   (hex)		Apple, Inc.
+60:92:26   (hex)		Apple, Inc.
+60:FE:20   (hex)		Apple, Inc.
+64:76:BA   (hex)		Apple, Inc.
+64:A3:CB   (hex)		Apple, Inc.
+68:5B:35   (hex)		Apple, Inc.
+68:AB:1E   (hex)		Apple, Inc.
+68:AE:20   (hex)		Apple, Inc.
+6C:4D:73   (hex)		Apple, Inc.
+6C:70:9F   (hex)		Apple, Inc.
+6C:96:CF   (hex)		Apple, Inc.
+70:14:A6   (hex)		Apple, Inc.
+70:20:84   (hex)		Apple, Inc.
+70:2E:22   (hex)		Apple, Inc.
+70:73:CB   (hex)		Apple, Inc.
+70:CD:60   (hex)		Apple, Inc.
+74:20:56   (hex)		Apple, Inc.
+74:51:BA   (hex)		Apple, Inc.
+74:9B:1E   (hex)		Apple, Inc.
+74:E1:B6   (hex)		Apple, Inc.
+78:4F:43   (hex)		Apple, Inc.
+78:CA:5E   (hex)		Apple, Inc.
+78:E3:B5   (hex)		Apple, Inc.
+7C:04:D0   (hex)		Apple, Inc.
+7C:11:96   (hex)		Apple, Inc.
+7C:6D:62   (hex)		Apple, Inc.
+7C:D1:C3   (hex)		Apple, Inc.
+80:BE:AF   (hex)		Apple, Inc.
+84:29:99   (hex)		Apple, Inc.
+84:38:35   (hex)		Apple, Inc.
+84:7A:88   (hex)		Apple, Inc.
+84:89:AD   (hex)		Apple, Inc.
+88:53:2E   (hex)		Apple, Inc.
+88:66:5A   (hex)		Apple, Inc.
+88:AE:1D   (hex)		Apple, Inc.
+8C:85:90   (hex)		Apple, Inc.
+8C:9E:7B   (hex)		Apple, Inc.
+90:72:40   (hex)		Apple, Inc.
+90:84:0D   (hex)		Apple, Inc.
+94:5B:7E   (hex)		Apple, Inc.
+94:9F:3E   (hex)		Apple, Inc.
+98:01:A7   (hex)		Apple, Inc.
+98:FE:94   (hex)		Apple, Inc.
+9C:20:7E   (hex)		Apple, Inc.
+A0:56:B2   (hex)		Apple, Inc.
+A0:6C:65   (hex)		Apple, Inc.
+A0:99:9B   (hex)		Apple, Inc.
+A0:D3:C1   (hex)		Apple, Inc.
+A4:5E:60   (hex)		Apple, Inc.
+A4:67:06   (hex)		Apple, Inc.
+A4:D1:D2   (hex)		Apple, Inc.
+A8:3E:0E   (hex)		Apple, Inc.
+A8:46:76   (hex)		Apple, Inc.
+A8:5E:45   (hex)		Apple, Inc.
+A8:86:DD   (hex)		Apple, Inc.
+AC:29:3A   (hex)		Apple, Inc.
+AC:61:EA   (hex)		Apple, Inc.
+AC:7F:3E   (hex)		Apple, Inc.
+B0:65:BD   (hex)		Apple, Inc.
+B0:8B:CF   (hex)		Apple, Inc.
+B0:9F:BA   (hex)		Apple, Inc.
+B0:C0:90   (hex)		Apple, Inc.
+B0:E5:6E   (hex)		Apple, Inc.
+B4:8B:1A   (hex)		Apple, Inc.
+B4:8D:ED   (hex)		Apple, Inc.
+B8:13:A7   (hex)		Apple, Inc.
+B8:53:AC   (hex)		Apple, Inc.
+B8:67:6E   (hex)		Apple, Inc.
+B8:76:3F   (hex)		Apple, Inc.
+B8:E8:56   (hex)		Apple, Inc.
+BC:20:A4   (hex)		Apple, Inc.
+BC:4C:C4   (hex)		Apple, Inc.
+BC:92:6B   (hex)		Apple, Inc.
+C0:7B:BC   (hex)		Apple, Inc.
+C4:2B:2C   (hex)		Apple, Inc.
+C4:5B:BE   (hex)		Apple, Inc.
+C4:8E:8F   (hex)		Apple, Inc.
+C8:54:2B   (hex)		Apple, Inc.
+C8:64:C7   (hex)		Apple, Inc.
+C8:B9:CD   (hex)		Apple, Inc.
+CC:08:FB   (hex)		Apple, Inc.
+CC:20:E8   (hex)		Apple, Inc.
+CC:25:EF   (hex)		Apple, Inc.
+CC:29:F5   (hex)		Apple, Inc.
+CC:78:5F   (hex)		Apple, Inc.
+D0:03:4B   (hex)		Apple, Inc.
+D0:A6:37   (hex)		Apple, Inc.
+D4:3A:2C   (hex)		Apple, Inc.
+D4:61:9D   (hex)		Apple, Inc.
+D8:30:62   (hex)		Apple, Inc.
+D8:9D:67   (hex)		Apple, Inc.
+D8:BB:2C   (hex)		Apple, Inc.
+DC:37:14   (hex)		Apple, Inc.
+DC:2B:61   (hex)		Apple, Inc.
+E0:3E:5A   (hex)		Apple, Inc.
+E0:3F:49   (hex)		Apple, Inc.
+E0:5F:45   (hex)		Apple, Inc.
+E0:6B:24   (hex)		Apple, Inc.
+E0:AC:CB   (hex)		Apple, Inc.
+E0:B9:A5   (hex)		Apple, Inc.
+E4:02:9B   (hex)		Apple, Inc.
+E4:6F:13   (hex)		Apple, Inc.
+E8:6D:52   (hex)		Apple, Inc.
+F0:03:8C   (hex)		Apple, Inc.
+F0:18:98   (hex)		Apple, Inc.
+F0:4B:6A   (hex)		Apple, Inc.
+F0:9E:9A   (hex)		Apple, Inc.
+F4:0F:24   (hex)		Apple, Inc.
+F4:31:C3   (hex)		Apple, Inc.
+F4:5C:89   (hex)		Apple, Inc.
+F4:8C:50   (hex)		Apple, Inc.
+F4:96:34   (hex)		Apple, Inc.
+F8:1E:DF   (hex)		Apple, Inc.
+F8:2F:6A   (hex)		Apple, Inc.
+F8:32:E4   (hex)		Apple, Inc.
+FC:25:3F   (hex)		Apple, Inc.
+FC:A0:5E   (hex)		Apple, Inc.
+FC:E9:98   (hex)		Apple, Inc.
+00:07:5F   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+00:19:CB   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+00:26:C7   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+00:27:19   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+08:28:ED   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+10:FE:ED   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+14:CF:92   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+18:A6:F7   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+1C:3B:F3   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+20:47:47   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+20:64:32   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+28:87:BA   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+2C:3A:28   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+2C:5B:B8   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+30:FC:68   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+34:E8:94   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+3C:46:D8   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+3C:84:6A   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+3C:E9:0E   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+40:ED:00   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+44:33:4C   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+48:22:54   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+48:41:1A   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+4C:E1:73   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+50:8B:3C   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+50:C7:BF   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+54:E6:FC   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+54:AF:97   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+5C:26:0A   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+60:32:B1   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+64:6B:F0   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+68:72:51   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+6C:38:A1   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+6C:5D:63   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+6C:9A:C8   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+70:4C:A5   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+70:D5:E7   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+74:DA:DA   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+78:45:C4   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+7C:D9:5C   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+80:3F:DD   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+84:C7:A0   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+88:B1:11   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+8C:6B:7B   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+90:5C:44   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+90:F6:52   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+98:0D:2E   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+98:69:B4   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+A0:2B:B8   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+A0:F3:C1   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+A4:2B:B0   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+A8:15:D2   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+AC:84:C6   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+AC:A2:13   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+B0:4E:26   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+B0:BE:76   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+B0:95:75   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+B4:B0:24   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+B8:1D:AA   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+BC:76:70   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C0:3F:0E   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C0:4A:00   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C0:7E:BF   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C4:0A:CB   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C8:1E:E7   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C8:3A:35   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+C8:BE:19   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+CC:32:E5   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+D0:C7:C0   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+D4:6E:0E   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+D8:07:B6   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+D8:0D:17   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+DC:09:4C   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+DC:FE:07   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E0:0C:7F   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E0:0E:DA   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E0:55:3D   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E4:D3:32   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E8:48:B8   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+E8:DE:C7   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+EC:6C:9F   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+EC:88:8F   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+F0:7D:68   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+F4:A8:38   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+F4:C7:AA   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+F8:8E:85   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+FC:33:05   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+FC:DB:B3   (hex)		TP-LINK TECHNOLOGIES CO., LTD.
+00:1A:2B   (hex)		Google, Inc.
+00:1A:AA   (hex)		Google, Inc.
+04:8D:38   (hex)		Google, Inc.
+08:3E:8C   (hex)		Google, Inc.
+0C:8D:DB   (hex)		Google, Inc.
+10:68:3F   (hex)		Google, Inc.
+14:CF:E4   (hex)		Google, Inc.
+18:3E:EF   (hex)		Google, Inc.
+1C:69:7A   (hex)		Google, Inc.
+20:C0:47   (hex)		Google, Inc.
+24:5E:BE   (hex)		Google, Inc.
+28:F0:76   (hex)		Google, Inc.
+2C:B0:5A   (hex)		Google, Inc.
+30:46:A0   (hex)		Google, Inc.
+30:8C:FB   (hex)		Google, Inc.
+3C:5A:B4   (hex)		Google, Inc.
+40:F3:08   (hex)		Google, Inc.
+44:DE:E2   (hex)		Google, Inc.
+48:5B:39   (hex)		Google, Inc.
+54:60:09   (hex)		Google, Inc.
+58:6B:14   (hex)		Google, Inc.
+5C:D9:98   (hex)		Google, Inc.
+64:5A:04   (hex)		Google, Inc.
+64:A6:51   (hex)		Google, Inc.
+68:54:5A   (hex)		Google, Inc.
+68:72:51   (hex)		Google, Inc.
+6C:88:14   (hex)		Google, Inc.
+70:6F:81   (hex)		Google, Inc.
+70:9F:2D   (hex)		Google, Inc.
+74:6A:89   (hex)		Google, Inc.
+78:31:C1   (hex)		Google, Inc.
+78:4B:48   (hex)		Google, Inc.
+78:D7:5F   (hex)		Google, Inc.
+7C:2A:DF   (hex)		Google, Inc.
+7C:D9:5C   (hex)		Google, Inc.
+80:1F:02   (hex)		Google, Inc.
+84:3D:C6   (hex)		Google, Inc.
+88:D7:F6   (hex)		Google, Inc.
+8C:45:00   (hex)		Google, Inc.
+8C:93:4B   (hex)		Google, Inc.
+90:AD:BE   (hex)		Google, Inc.
+94:EB:2C   (hex)		Google, Inc.
+98:8D:46   (hex)		Google, Inc.
+9C:52:F8   (hex)		Google, Inc.
+A0:CE:C8   (hex)		Google, Inc.
+A4:77:33   (hex)		Google, Inc.
+A8:66:7F   (hex)		Google, Inc.
+AC:8D:14   (hex)		Google, Inc.
+B0:4E:26   (hex)		Google, Inc.
+B0:5C:E5   (hex)		Google, Inc.
+B0:9D:B9   (hex)		Google, Inc.
+B4:39:D6   (hex)		Google, Inc.
+B4:58:1E   (hex)		Google, Inc.
+B8:27:EB   (hex)		Google, Inc.
+BC:17:0A   (hex)		Google, Inc.
+C0:33:5E   (hex)		Google, Inc.
+C4:93:00   (hex)		Google, Inc.
+C4:F0:81   (hex)		Google, Inc.
+C8:C5:E8   (hex)		Google, Inc.
+CC:3D:82   (hex)		Google, Inc.
+D0:35:1D   (hex)		Google, Inc.
+D0:D2:B0   (hex)		Google, Inc.
+D4:3B:04   (hex)		Google, Inc.
+D8:0C:3F   (hex)		Google, Inc.
+D8:9D:67   (hex)		Google, Inc.
+D8:B3:70   (hex)		Google, Inc.
+D8:C0:C9   (hex)		Google, Inc.
+DC:8B:28   (hex)		Google, Inc.
+DC:F0:90   (hex)		Google, Inc.
+E0:5A:9F   (hex)		Google, Inc.
+E0:5F:B9   (hex)		Google, Inc.
+E0:6E:17   (hex)		Google, Inc.
+E0:9D:31   (hex)		Google, Inc.
+E4:B3:18   (hex)		Google, Inc.
+E8:B1:FC   (hex)		Google, Inc.
+EC:22:80   (hex)		Google, Inc.
+F0:27:65   (hex)		Google, Inc.
+F0:42:1C   (hex)		Google, Inc.
+F4:B5:20   (hex)		Google, Inc.
+F4:F5:24   (hex)		Google, Inc.
+F8:CA:B8   (hex)		Google, Inc.
+FC:AA:14   (hex)		Google, Inc.
+FC:FB:FB   (hex)		Google, Inc.
+A0:04:60   (hex)		Samsung Electronics Co.,Ltd
+A8:66:7F   (hex)		Samsung Electronics Co.,Ltd
+B0:55:08   (hex)		Samsung Electronics Co.,Ltd
+B4:E6:2D   (hex)		Samsung Electronics Co.,Ltd
+C0:4B:D6   (hex)		Samsung Electronics Co.,Ltd
+C4:9E:BD   (hex)		Samsung Electronics Co.,Ltd
+C8:D9:56   (hex)		Samsung Electronics Co.,Ltd
+D0:DF:9A   (hex)		Samsung Electronics Co.,Ltd
+D4:38:9B   (hex)		Samsung Electronics Co.,Ltd
+D8:1C:46   (hex)		Samsung Electronics Co.,Ltd
+E0:63:4C   (hex)		Samsung Electronics Co.,Ltd
+E0:9D:31   (hex)		Samsung Electronics Co.,Ltd
+E0:FB:50   (hex)		Samsung Electronics Co.,Ltd
+E8:48:B8   (hex)		Samsung Electronics Co.,Ltd
+F0:03:8C   (hex)		Samsung Electronics Co.,Ltd
+F0:F8:F2   (hex)		Samsung Electronics Co.,Ltd
+F4:C7:AA   (hex)		Samsung Electronics Co.,Ltd
+F8:5C:7D   (hex)		Samsung Electronics Co.,Ltd
+FC:03:9F   (hex)		Samsung Electronics Co.,Ltd
+FC:CF:62   (hex)		Samsung Electronics Co.,Ltd
+10:C5:95   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+08:96:D7   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+14:16:9E   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+04:9F:0A   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+1C:1D:86   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+24:69:68   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+1C:BA:8C   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+28:6E:D4   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+E0:5A:1F   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+34:CD:6D   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+4C:34:88   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+48:77:2B   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+54:06:18   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+58:CB:52   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+64:16:7C   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+64:2E:47   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+70:F1:96   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+74:9E:AF   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+78:46:9B   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+78:9E:A0   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+7C:11:BE   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+80:1F:12   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+8C:3C:4A   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+94:9F:6E   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+9C:AA:9F   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+9C:DC:71   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+A0:80:C5   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+A4:77:58   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+B0:74:10   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+B4:47:5E   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+B8:BC:1B   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+C0:B5:D7   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+C4:9E:7F   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+C8:1F:6E   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+D0:C1:82   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+D4:36:39   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+D4:77:99   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+D8:BB:C1   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+E8:65:03   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F0:19:5B   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F0:2F:74   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F4:6A:10   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F8:2A:7D   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F8:2F:5E   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+F8:CF:C5   (hex)		HUAWEI TECHNOLOGIES CO.,LTD
+00:11:50   (hex)		Sony Ericsson Mobile Communications AB
+00:1E:E1   (hex)		Sony Ericsson Mobile Communications AB
+00:23:7B   (hex)		Sony Ericsson Mobile Communications AB
+00:25:49   (hex)		Sony Ericsson Mobile Communications AB
+00:26:5D   (hex)		Sony Ericsson Mobile Communications AB
+00:26:E8   (hex)		Sony Ericsson Mobile Communications AB
+AC:5E:7C   (hex)		Sony Ericsson Mobile Communications AB
+00:13:77   (hex)		LG Electronics
+00:15:00   (hex)		LG Electronics
+00:1C:64   (hex)		LG Electronics
+00:1E:89   (hex)		LG Electronics
+00:22:08   (hex)		LG Electronics
+00:E0:46   (hex)		LG Electronics
+08:2E:5F   (hex)		LG Electronics
+08:74:02   (hex)		LG Electronics
+08:9B:6B   (hex)		LG Electronics
+0C:1D:AF   (hex)		LG Electronics
+1C:66:AA   (hex)		LG Electronics
+1C:6B:CA   (hex)		LG Electronics
+20:86:26   (hex)		LG Electronics
+24:0A:64   (hex)		LG Electronics
+24:6E:96   (hex)		LG Electronics
+2C:1F:23   (hex)		LG Electronics
+30:51:94   (hex)		LG Electronics
+38:06:28   (hex)		LG Electronics
+38:68:DD   (hex)		LG Electronics
+3C:8B:F1   (hex)		LG Electronics
+48:6C:93   (hex)		LG Electronics
+50:8B:F0   (hex)		LG Electronics
+5C:0E:8B   (hex)		LG Electronics
+5C:51:88   (hex)		LG Electronics
+60:3E:5F   (hex)		LG Electronics
+64:02:01   (hex)		LG Electronics
+70:5D:23   (hex)		LG Electronics
+74:1F:4A   (hex)		LG Electronics
+78:62:6E   (hex)		LG Electronics
+84:A1:95   (hex)		LG Electronics
+8C:1A:4D   (hex)		LG Electronics
+8C:33:55   (hex)		LG Electronics
+8C:8C:EA   (hex)		LG Electronics
+94:6A:77   (hex)		LG Electronics
+94:9A:A9   (hex)		LG Electronics
+98:FE:94   (hex)		LG Electronics
+AC:1F:74   (hex)		LG Electronics
+AC:5A:14   (hex)		LG Electronics
+AC:DB:48   (hex)		LG Electronics
+B0:E2:E5   (hex)		LG Electronics
+B4:CE:F6   (hex)		LG Electronics
+B8:A3:86   (hex)		LG Electronics
+BC:59:5B   (hex)		LG Electronics
+BC:8C:CD   (hex)		LG Electronics
+C0:07:15   (hex)		LG Electronics
+C4:3C:D0   (hex)		LG Electronics
+C8:0C:C8   (hex)		LG Electronics
+D0:29:57   (hex)		LG Electronics
+D0:C5:9B   (hex)		LG Electronics
+D0:DF:9A   (hex)		LG Electronics
+D4:38:9B   (hex)		LG Electronics
+D8:0C:BB   (hex)		LG Electronics
+DC:0B:1A   (hex)		LG Electronics
+DC:C6:1F   (hex)		LG Electronics
+E4:75:68   (hex)		LG Electronics
+E8:48:B8   (hex)		LG Electronics
+E8:99:2F   (hex)		LG Electronics
+EC:21:6B   (hex)		LG Electronics
+EC:23:3B   (hex)		LG Electronics
+F0:03:8C   (hex)		LG Electronics
+F0:0E:2E   (hex)		LG Electronics
+F0:72:8C   (hex)		LG Electronics
+F4:5E:AB   (hex)		LG Electronics
+F8:0D:43   (hex)		LG Electronics
+F8:27:B4   (hex)		LG Electronics
+FC:1C:B4   (hex)		LG Electronics
+FC:A1:3F   (hex)		LG Electronics
+FC:CF:62   (hex)		LG Electronics
+FC:E8:C0   (hex)		LG Electronics
+00:0F:53   (hex)		Intel Corporation
+00:04:23   (hex)		Intel Corporation
+00:0C:2C   (hex)		Intel Corporation
+00:0E:0C   (hex)		Intel Corporation
+00:12:47   (hex)		Intel Corporation
+00:13:02   (hex)		Intel Corporation
+00:13:C8   (hex)		Intel Corporation
+00:13:E8   (hex)		Intel Corporation
+00:14:22   (hex)		Intel Corporation
+00:15:00   (hex)		Intel Corporation
+00:16:76   (hex)		Intel Corporation
+00:18:DE   (hex)		Intel Corporation
+00:19:D1   (hex)		Intel Corporation
+00:1B:9E   (hex)		Intel Corporation
+00:1C:BF   (hex)		Intel Corporation
+00:1E:67   (hex)		Intel Corporation
+00:1F:3C   (hex)		Intel Corporation
+00:1F:29   (hex)		Intel Corporation
+00:21:6B   (hex)		Intel Corporation
+00:23:14   (hex)		Intel Corporation
+00:24:D7   (hex)		Intel Corporation
+00:25:9A   (hex)		Intel Corporation
+00:26:C7   (hex)		Intel Corporation
+00:30:4F   (hex)		Intel Corporation
+00:30:64   (hex)		Intel Corporation
+00:30:D9   (hex)		Intel Corporation
+00:40:05   (hex)		Intel Corporation
+00:40:95   (hex)		Intel Corporation
+00:4F:49   (hex)		Intel Corporation
+00:60:0E   (hex)		Intel Corporation
+00:60:70   (hex)		Intel Corporation
+00:80:6F   (hex)		Intel Corporation
+00:8C:FA   (hex)		Intel Corporation
+00:90:27   (hex)		Intel Corporation
+00:90:F0   (hex)		Intel Corporation
+00:A0:68   (hex)		Intel Corporation
+00:A0:C9   (hex)		Intel Corporation
+00:AA:01   (hex)		Intel Corporation
+00:B0:D0   (hex)		Intel Corporation
+00:B4:69   (hex)		Intel Corporation
+00:D0:59   (hex)		Intel Corporation
+00:D0:B7   (hex)		Intel Corporation
+00:E0:98   (hex)		Intel Corporation
+00:E0:B0   (hex)		Intel Corporation
+00:E0:CB   (hex)		Intel Corporation
+00:02:B3   (hex)		Intel Corporation
+00:03:47   (hex)		Intel Corporation
+00:04:E2   (hex)		Intel Corporation
+00:06:06   (hex)		Intel Corporation
+00:06:0F   (hex)		ASUSTek COMPUTER INC.
+00:07:F1   (hex)		Intel Corporation
+00:09:6B   (hex)		Acer Technologies
+00:0A:E4   (hex)		Intel Corporation
+00:0B:D5   (hex)		Intel Corporation
+00:0C:37   (hex)		Intel Corporation
+00:0C:BB   (hex)		Intel Corporation
+00:0D:0B   (hex)		Intel Corporation
+00:11:2F   (hex)		Intel Corporation
+00:12:F0   (hex)		Intel Corporation
+00:13:20   (hex)		Intel Corporation
+00:13:8F   (hex)		Intel Corporation
+00:14:6C   (hex)		Intel Corporation
+00:15:06   (hex)		Intel Corporation
+00:15:17   (hex)		Intel Corporation
+00:15:B7   (hex)		Intel Corporation
+00:16:17   (hex)		Intel Corporation
+00:16:CF   (hex)		Intel Corporation
+00:17:49   (hex)		Intel Corporation
+00:17:F2   (hex)		Intel Corporation
+00:18:64   (hex)		Intel Corporation
+00:19:86   (hex)		Intel Corporation
+00:1A:47   (hex)		Intel Corporation
+00:1B:21   (hex)		Intel Corporation
+00:1B:BA   (hex)		Intel Corporation
+00:1C:15   (hex)		Intel Corporation
+00:1C:FD   (hex)		Intel Corporation
+00:1D:45   (hex)		Intel Corporation
+00:1D:60   (hex)		Intel Corporation
+00:1D:80   (hex)		Intel Corporation
+00:1E:2A   (hex)		Intel Corporation
+00:1E:AA   (hex)		Intel Corporation
+00:1F:3B   (hex)		Intel Corporation
+00:1F:5E   (hex)		Intel Corporation
+00:1F:AB   (hex)		Intel Corporation
+00:20:12   (hex)		Intel Corporation
+00:20:20   (hex)		Intel Corporation
+00:20:2F   (hex)		Intel Corporation
+00:20:47   (hex)		Intel Corporation
+00:20:89   (hex)		Intel Corporation
+00:20:93   (hex)		Intel Corporation
+00:20:AA   (hex)		Intel Corporation
+00:20:B0   (hex)		Intel Corporation
+00:20:B3   (hex)		Intel Corporation
+00:20:D8   (hex)		Intel Corporation
+00:20:E4   (hex)		Intel Corporation
+00:20:EF   (hex)		Intel Corporation
+00:20:F8   (hex)		Intel Corporation
+00:21:19   (hex)		Intel Corporation
+00:21:6C   (hex)		Intel Corporation
+00:21:85   (hex)		Intel Corporation
+00:21:CC   (hex)		Intel Corporation
+00:22:52   (hex)		Intel Corporation
+00:22:68   (hex)		Intel Corporation
+00:22:69   (hex)		Intel Corporation
+00:22:6B   (hex)		Intel Corporation
+00:23:15   (hex)		Intel Corporation
+00:23:54   (hex)		Intel Corporation
+00:23:CD   (hex)		Intel Corporation
+00:24:03   (hex)		Intel Corporation
+00:24:D3   (hex)		Intel Corporation
+00:25:01   (hex)		Intel Corporation
+00:25:64   (hex)		Intel Corporation
+00:25:CC   (hex)		Intel Corporation
+00:26:55   (hex)		Intel Corporation
+00:26:80   (hex)		Intel Corporation
+00:26:AB   (hex)		Intel Corporation
+0C:54:15   (hex)		Intel Corporation
+10:02:B5   (hex)		Intel Corporation
+10:7B:EF   (hex)		Intel Corporation
+18:03:73   (hex)		Intel Corporation
+1C:5C:55   (hex)		Intel Corporation
+24:A4:3C   (hex)		Intel Corporation
+28:10:7B   (hex)		Intel Corporation
+2C:27:D7   (hex)		Intel Corporation
+30:10:E4   (hex)		Intel Corporation
+30:14:4A   (hex)		Intel Corporation
+30:8C:FB   (hex)		Intel Corporation
+30:CD:A7   (hex)		Intel Corporation
+34:02:86   (hex)		Intel Corporation
+34:58:0D   (hex)		Intel Corporation
+3C:77:E6   (hex)		Intel Corporation
+40:16:9E   (hex)		Intel Corporation
+44:6E:E5   (hex)		Intel Corporation
+48:57:02   (hex)		Intel Corporation
+4C:8D:79   (hex)		Intel Corporation
+50:C2:E5   (hex)		Intel Corporation
+54:3B:04   (hex)		Intel Corporation
+54:8C:A0   (hex)		Intel Corporation
+5C:F3:70   (hex)		Intel Corporation
+64:6F:80   (hex)		Intel Corporation
+68:05:CA   (hex)		Intel Corporation
+6C:2E:85   (hex)		Intel Corporation
+6C:4A:1F   (hex)		Intel Corporation
+70:5A:B5   (hex)		Intel Corporation
+74:8F:3C   (hex)		Intel Corporation
+78:8C:51   (hex)		Intel Corporation
+7C:11:4B   (hex)		Intel Corporation
+7C:4B:8C   (hex)		Intel Corporation
+7C:B3:7B   (hex)		Intel Corporation
+7C:E9:0C   (hex)		Intel Corporation
+7C:FB:98   (hex)		Intel Corporation
+80:86:F2   (hex)		Intel Corporation
+80:F6:2E   (hex)		Intel Corporation
+84:1B:5E   (hex)		Intel Corporation
+88:CB:87   (hex)		Intel Corporation
+8C:04:FF   (hex)		Intel Corporation
+8C:70:5A   (hex)		Intel Corporation
+8C:FD:18   (hex)		Intel Corporation
+90:78:41   (hex)		Intel Corporation
+94:C6:91   (hex)		Intel Corporation
+98:5F:D3   (hex)		Intel Corporation
+9C:4E:20   (hex)		Intel Corporation
+A0:36:9F   (hex)		Intel Corporation
+A0:40:A0   (hex)		Intel Corporation
+A0:51:0B   (hex)		Intel Corporation
+A0:8C:15   (hex)		Intel Corporation
+A0:ED:CD   (hex)		Intel Corporation
+A4:34:D9   (hex)		Intel Corporation
+A8:5B:78   (hex)		Intel Corporation
+A8:F5:49   (hex)		Intel Corporation
+AC:9E:17   (hex)		Intel Corporation
+B0:48:7A   (hex)		Intel Corporation
+B0:6E:BF   (hex)		Intel Corporation
+B0:7D:62   (hex)		Intel Corporation
+B4:6D:83   (hex)		Intel Corporation
+B4:79:A7   (hex)		Intel Corporation
+B8:6A:97   (hex)		Intel Corporation
+B8:AE:6E   (hex)		Intel Corporation
+B8:CB:29   (hex)		Intel Corporation
+BC:77:37   (hex)		Intel Corporation
+C0:36:98   (hex)		Intel Corporation
+C0:47:8D   (hex)		Intel Corporation
+C0:74:AD   (hex)		Intel Corporation
+C0:E4:34   (hex)		Intel Corporation
+C4:0B:CB   (hex)		Intel Corporation
+C4:2C:03   (hex)		Intel Corporation
+C8:3E:A7   (hex)		Intel Corporation
+C8:F7:33   (hex)		Intel Corporation
+CC:AF:78   (hex)		Intel Corporation
+D0:17:6A   (hex)		Intel Corporation
+D0:53:49   (hex)		Intel Corporation
+D0:A6:37   (hex)		Intel Corporation
+D4:5B:1E   (hex)		Intel Corporation
+D8:50:E6   (hex)		Intel Corporation
+D8:C4:E9   (hex)		Intel Corporation
+D8:FC:38   (hex)		Intel Corporation
+D9:50:E6   (hex)		Intel Corporation
+DC:53:7C   (hex)		Intel Corporation
+E0:06:E6   (hex)		Intel Corporation
+E0:84:BD   (hex)		Intel Corporation
+E0:D1:73   (hex)		Intel Corporation
+E4:3A:6E   (hex)		Intel Corporation
+E4:B9:35   (hex)		Intel Corporation
+E8:EA:DA   (hex)		Intel Corporation
+F0:76:1C   (hex)		Intel Corporation
+F0:7D:68   (hex)		Intel Corporation
+F4:6E:33   (hex)		Intel Corporation
+F4:6F:F3   (hex)		Intel Corporation
+F4:D7:8B   (hex)		Intel Corporation
+F8:2F:5E   (hex)		Intel Corporation
+F8:BC:12   (hex)		Intel Corporation
+FC:0F:E6   (hex)		Intel Corporation
+FC:10:BD   (hex)		Intel Corporation
+FC:AA:14   (hex)		Intel Corporation

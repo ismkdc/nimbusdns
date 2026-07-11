@@ -1019,11 +1019,15 @@ async fn get_dhcp_status(State(state): State<Arc<InternalState>>) -> (StatusCode
     api_ok(serde_json::json!({"enabled": enabled, "range": format!("{} - {}", start, end)}))
 }
 
-/// GET /api/dhcp/leases - DHCP lease list
+/// GET /api/dhcp/leases - DHCP lease list (enriched with vendor info)
 async fn get_dhcp_leases(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     match &state.app_state.dhcp_server {
         Some(server) => {
-            let leases = nimbus_core::dhcp::get_leases(server);
+            let mut leases = nimbus_core::dhcp::get_leases(server);
+            // Enrich each lease with vendor/manufacturer info from OUI database
+            for lease in &mut leases {
+                lease.vendor = state.app_state.oui.lookup(&lease.mac).map(String::from);
+            }
             Ok(api_ok(leases))
         }
         None => Ok(api_ok(Vec::<String>::new())),

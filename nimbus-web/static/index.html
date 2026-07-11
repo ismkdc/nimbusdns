@@ -138,7 +138,7 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
       <a href="#" onclick="showPage('dhcp',this)"><span class="icon">📡</span> DHCP</a>
       <a href="#" onclick="showPage('settings',this)"><span class="icon">⚙️</span> Settings</a>
       <div style="padding:20px;font-size:0.72em;color:#3a4a6a;border-top:1px solid #1a2340;margin-top:8px">
-        v<span id="sidebar-version">0.4.7</span>
+        v<span id="sidebar-version">0.4.8</span>
       </div>
     </nav>
   </aside>
@@ -226,7 +226,7 @@ h3 { font-size: 0.95em; color: #b0c4e8; margin: 20px 0 12px; font-weight: 500; }
   </div>
   <button class="btn btn-primary" onclick="saveDhcp()" style="margin-top:12px">💾 Save DHCP Settings</button>
   <h3 style="margin-top:24px">Active Leases</h3>
-  <table><thead><tr><th>IP</th><th>MAC</th><th>Hostname</th><th>Expires</th></tr></thead><tbody id="dhcp-leases"></tbody></table>
+  <table><thead><tr><th>IP</th><th>MAC</th><th>Vendor</th><th>Hostname</th><th>Expires</th></tr></thead><tbody id="dhcp-leases"></tbody></table>
 </div>
 
 <!-- SETTINGS -->
@@ -760,7 +760,7 @@ async function loadDhcp() {
     
     const leases = await api('/api/dhcp/leases');
     document.getElementById('dhcp-leases').innerHTML = (leases||[]).map(l =>
-      `<tr><td>${l.ip}</td><td>${l.mac?Array.from(l.mac).map(b=>b.toString(16).padStart(2,'0')).join(':').toLowerCase():'-'}</td><td>${l.hostname||'-'}</td><td>${l.expires_at?new Date(l.expires_at*1000).toLocaleString():'-'}</td></tr>`
+      `<tr><td>${l.ip}</td><td>${l.mac?Array.from(l.mac).map(b=>b.toString(16).padStart(2,'0')).join(':').toLowerCase():'-'}</td><td>${l.vendor||'-'}</td><td>${l.hostname||'-'}</td><td>${l.expires_at?new Date(l.expires_at*1000).toLocaleString():'-'}</td></tr>`
     ).join('');
   } catch(e) {}
 }

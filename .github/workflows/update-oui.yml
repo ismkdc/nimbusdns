@@ -1,0 +1,90 @@
+# =============================================================================
+# OUI Database Updater
+# =============================================================================
+# Monthly workflow that downloads the latest IEEE OUI database and creates
+# a new release when the data changes.
+#
+# The OUI database maps MAC address prefixes (first 3 bytes) to
+# manufacturer/vendor names. It is embedded in the nimbus-core crate
+# at compile time via include_str!("../data/oui.txt").
+#
+# Source: https://standards-oui.ieee.org/oui/oui.txt
+
+name: Update OUI Database
+
+on:
+  schedule:
+    # Run at 00:00 UTC on the 1st of every month
+    - cron: "0 0 1 * *"
+  workflow_dispatch:
+    # Allow manual trigger from GitHub Actions UI
+
+permissions:
+  contents: write
+
+jobs:
+  update-oui:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Download latest IEEE OUI database
+        id: download
+        run: |
+          curl -sL -o /tmp/oui.txt "https://standards-oui.ieee.org/oui/oui.txt"
+          head -5 /tmp/oui.txt
+          echo "size=$(wc -c < /tmp/oui.txt)" >> "$GITHUB_OUTPUT"
+
+      - name: Check if OUI file changed
+        id: check
+        run: |
+          if [ -f "nimbus-core/data/oui.txt" ]; then
+            if diff -q /tmp/oui.txt nimbus-core/data/oui.txt > /dev/null 2>&1; then
+              echo "changed=false" >> "$GITHUB_OUTPUT"
+              echo "OUI database is up to date."
+            else
+              echo "changed=true" >> "$GITHUB_OUTPUT"
+              echo "OUI database has changed."
+            fi
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            echo "No existing OUI database found."
+          fi
+
+      - name: Update OUI file
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          cp /tmp/oui.txt nimbus-core/data/oui.txt
+          echo "Updated nimbus-core/data/oui.txt"
+
+      - name: Commit OUI update
+        if: steps.check.outputs.changed == 'true'
+        run: |
+          DATE_TAG=$(date +'%Y-%m-%d')
+          git config user.name "nimbusdns-bot"
+          git config user.email "bot@nimbusdns.local"
+          git add nimbus-core/data/oui.txt
+          git commit -m "chore: update IEEE OUI database ($DATE_TAG)"
+          git tag "oui-$DATE_TAG"
+          git push
+          git push origin "oui-$DATE_TAG"
+
+      - name: Create GitHub Release
+        if: steps.check.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DATE_TAG=$(date +'%Y-%m-%d')
+          ENTRY_COUNT=$(grep -c '(hex)' nimbus-core/data/oui.txt || true)
+          gh release create "oui-$DATE_TAG" \
+            --title "OUI Database Update ($DATE_TAG)" \
+            --notes "Automatic monthly update of the IEEE OUI database.
+
+        * Source: https://standards-oui.ieee.org/oui/oui.txt
+        * Entries: $ENTRY_COUNT manufacturer prefixes
+        * Updated: $DATE_TAG
+
+        This release is data-only. No code changes are included." \
+            --target "${{ github.ref_name }}"
