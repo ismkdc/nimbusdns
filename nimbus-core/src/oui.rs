@@ -189,6 +189,6 @@ mod tests {
     fn test_oui_not_empty() {
         let db = OuiDb::new();
         assert!(!db.is_empty());
-        assert!(db.len() > 0);
+        assert!(!db.is_empty());
     }
 }
