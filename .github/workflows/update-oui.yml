@@ -78,13 +78,14 @@ jobs:
         run: |
           DATE_TAG=$(date +'%Y-%m-%d')
           ENTRY_COUNT=$(grep -c '(hex)' nimbus-core/data/oui.txt || true)
+          echo "Automatic monthly update of the IEEE OUI database." > /tmp/release-notes.md
+          echo "" >> /tmp/release-notes.md
+          echo "* Source: https://standards-oui.ieee.org/oui/oui.txt" >> /tmp/release-notes.md
+          echo "* Entries: $ENTRY_COUNT manufacturer prefixes" >> /tmp/release-notes.md
+          echo "* Updated: $DATE_TAG" >> /tmp/release-notes.md
+          echo "" >> /tmp/release-notes.md
+          echo "This release is data-only. No code changes are included." >> /tmp/release-notes.md
           gh release create "oui-$DATE_TAG" \
             --title "OUI Database Update ($DATE_TAG)" \
-            --notes "Automatic monthly update of the IEEE OUI database.
-
-        * Source: https://standards-oui.ieee.org/oui/oui.txt
-        * Entries: $ENTRY_COUNT manufacturer prefixes
-        * Updated: $DATE_TAG
-
-        This release is data-only. No code changes are included." \
+            --notes-file /tmp/release-notes.md \
             --target "${{ github.ref_name }}"
