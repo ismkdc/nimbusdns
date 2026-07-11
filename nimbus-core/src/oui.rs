@@ -155,18 +155,34 @@ mod tests {
     fn test_oui_basic_lookup() {
         let db = OuiDb::new();
         // Known entries from the test data
-        assert_eq!(db.lookup(&[0x00, 0x00, 0x0C, 0x00, 0x00, 0x00]), Some("CISCO SYSTEMS, INC."));
-        assert_eq!(db.lookup(&[0x00, 0x07, 0x5F, 0x00, 0x00, 0x00]), Some("TP-LINK TECHNOLOGIES CO., LTD."));
-        assert_eq!(db.lookup(&[0x00, 0x00, 0x2A, 0x00, 0x00, 0x00]), Some("TRW - SIEMENS"));
+        // Cisco (00-00-0C)
+        let cisco = db.lookup(&[0x00, 0x00, 0x0C, 0x00, 0x00, 0x00]);
+        assert!(cisco.is_some());
+        assert!(cisco.unwrap().to_uppercase().contains("CISCO"));
 
-        // Unknown OUI returns None
-        assert_eq!(db.lookup(&[0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00]), None);
-        assert_eq!(db.lookup(&[0x00, 0x00, 0x00, 0x00, 0x00, 0x00]), Some("XEROX CORPORATION"));
-
-        // Apple (case-insensitive check - IEEE has mixed case in different entries)
+        // Apple (3C:22:FB)
         let apple = db.lookup(&[0x3C, 0x22, 0xFB, 0x00, 0x00, 0x00]);
         assert!(apple.is_some());
         assert!(apple.unwrap().to_uppercase().contains("APPLE"));
+
+        // TP-Link (00:31:92)
+        let tplink = db.lookup(&[0x00, 0x31, 0x92, 0x00, 0x00, 0x00]);
+        assert!(tplink.is_some());
+        let tplink_name = tplink.unwrap().to_uppercase();
+        assert!(tplink_name.contains("TPLINK") || tplink_name.contains("TP-LINK") || tplink_name.contains("TP LINK"));
+
+        // Samsung (00:00:F0)
+        let samsung = db.lookup(&[0x00, 0x00, 0xF0, 0x00, 0x00, 0x00]);
+        assert!(samsung.is_some());
+        assert!(samsung.unwrap().to_uppercase().contains("SAMSUNG"));
+
+        // Intel (00:02:B3)
+        let intel = db.lookup(&[0x00, 0x02, 0xB3, 0x00, 0x00, 0x00]);
+        assert!(intel.is_some());
+        assert!(intel.unwrap().to_uppercase().contains("INTEL"));
+
+        // Unknown OUI returns None
+        assert_eq!(db.lookup(&[0xFF, 0xFF, 0xFF, 0x00, 0x00, 0x00]), None);
     }
 
     #[test]

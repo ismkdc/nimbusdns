@@ -8,7 +8,7 @@
 # manufacturer/vendor names. It is embedded in the nimbus-core crate
 # at compile time via include_str!("../data/oui.txt").
 #
-# Source: https://standards-oui.ieee.org/oui/oui.txt
+# Source: https://www.wireshark.org/download/automated/data/manuf
 
 name: Update OUI Database
 
@@ -33,12 +33,10 @@ jobs:
       - name: Download OUI database
         id: download
         run: |
-          # Primary source: Wireshark's manuf file on GitHub
-          # (guaranteed reachable from GitHub Actions)
-          echo "Downloading from Wireshark manuf (GitHub)..."
-          curl -sL --retry 3 --retry-delay 5 \
+          echo "Downloading Wireshark manuf..."
+          curl -sL --retry 5 --retry-delay 10 --connect-timeout 30 \
             -o /tmp/manuf.txt \
-            "https://raw.githubusercontent.com/wireshark/wireshark/master/manuf"
+            "https://www.wireshark.org/download/automated/data/manuf"
 
           SIZE=$(wc -c < /tmp/manuf.txt)
           if [ "$SIZE" -lt 10000 ]; then
@@ -107,7 +105,7 @@ jobs:
           ENTRY_COUNT=$(grep -c '(hex)' nimbus-core/data/oui.txt || true)
           echo "Automatic monthly update of the IEEE OUI database." > /tmp/release-notes.md
           echo "" >> /tmp/release-notes.md
-          echo "* Source: https://standards-oui.ieee.org/oui/oui.txt" >> /tmp/release-notes.md
+          echo "* Source: https://www.wireshark.org/download/automated/data/manuf" >> /tmp/release-notes.md
           echo "* Entries: $ENTRY_COUNT manufacturer prefixes" >> /tmp/release-notes.md
           echo "* Updated: $DATE_TAG" >> /tmp/release-notes.md
           echo "" >> /tmp/release-notes.md
