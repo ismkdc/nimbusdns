@@ -47,13 +47,14 @@ jobs:
 
           # Convert Wireshark manuf format to IEEE oui.txt format
           # Wireshark format: "00:00:00\tVendor\t# comment"
-          # IEEE format:     "00-00-00   (hex)\t\tVENDOR"
+          # IEEE format:     "00-00-00   (hex)\t\tVENDOR NAME"
           awk -F '\t' '
             /^[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]:[0-9A-Fa-f][0-9A-Fa-f]/ {
               gsub(/:/, "-", $1)
-              gsub(/#.*/, "", $2)
-              gsub(/^[ \t]+|[ \t]+$/, "", $2)
-              if ($2 != "") print $1 "   (hex)\t\t" $2
+              name = $3
+              if (name == "") name = $2
+              gsub(/^[ \t]+|[ \t]+$/, "", name)
+              if (name != "") print $1 "   (hex)\t\t" name
             }
           ' /tmp/manuf.txt > /tmp/oui.txt
 
