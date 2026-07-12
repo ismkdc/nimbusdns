@@ -1,7 +1,7 @@
 # =============================================================================
 # NimbusDNS -- Distroless multi-stage build
 # =============================================================================
-FROM docker.io/rust:1.96-slim-bookworm AS builder
+FROM docker.io/rust:1.97-slim-bookworm AS builder
 RUN apt-get update && apt-get install -y --no-install-recommends \
     pkg-config libsqlite3-dev libssl-dev ca-certificates \
     && rm -rf /var/lib/apt/lists/*
