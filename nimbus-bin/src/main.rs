@@ -40,7 +40,13 @@ fn main() -> anyhow::Result<()> {
             return Err(e.into());
         }
     };
-    logging::init_with_file(cfg.files.log_file.as_deref())?;
+    // Foreground (Docker) → log to stdout so `docker logs` works.
+    // Daemon mode (fork redirects stdout to /dev/null) → log to files.log_file.
+    if args.foreground {
+        logging::init()?;
+    } else {
+        logging::init_with_file(cfg.files.log_file.as_deref())?;
+    }
     info!("########## NimbusDNS started on {}! ##########", hostname());
     info!("Parsed config file {} successfully", args.config.display());
 
@@ -65,6 +71,10 @@ fn main() -> anyhow::Result<()> {
 
 // -- Async entry point (runs after fork in child process) ---------------
 async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
+    // Log the effective configuration summary once (after fork, so daemon
+    // mode with file logging also captures it).
+    logging::log_config_summary(&cfg);
+
     // Check for another nimbusdns instance
     if cfg.misc.check_other_instance && daemon::check_other_instance(&cfg.files.pid_file) {
         // Another instance is running — exit cleanly instead of crashing

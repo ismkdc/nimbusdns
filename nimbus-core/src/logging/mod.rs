@@ -81,6 +81,51 @@ fn log_startup_banner() {
     tracing::info!("--------------------------------------------------");
 }
 
+/// Log a detailed configuration summary at startup so operators can see the
+/// effective runtime settings in one place (version, DNS, DHCP, web, DB,
+/// fetcher) without digging into the config file.
+pub fn log_config_summary(cfg: &crate::config::Config) {
+    use crate::config::DnsUpstream;
+
+    tracing::info!("=== NimbusDNS {} configuration summary ===", env!("CARGO_PKG_VERSION"));
+
+    // DNS
+    tracing::info!("DNS bind: {} (rate limit: {} qps, query_log: {})",
+        cfg.dns.bind, cfg.dns.rate_limit, cfg.dns.query_log);
+    for (i, up) in cfg.dns.upstreams.iter().enumerate() {
+        let desc = match up {
+            DnsUpstream::Plain { address, port } => format!("udp://{}:{}", address, port),
+            DnsUpstream::Tls { address, port, hostname } => format!("tls://{}:{}#{}", address, port, hostname),
+        };
+        tracing::info!("  upstream[{}]: {}", i, desc);
+    }
+    tracing::info!("Blocking mode: {:?} (blocking_ip: {})",
+        cfg.dns.blocking_mode, cfg.dns.blocking_ip);
+
+    // DHCP
+    if cfg.dhcp.enabled {
+        let start = cfg.dhcp.pool_start.map(|s| s.to_string()).unwrap_or_else(|| "auto".into());
+        let end = cfg.dhcp.pool_end.map(|e| e.to_string()).unwrap_or_else(|| "auto".into());
+        tracing::info!("DHCP: enabled (interface: {:?}, pool: {}-{}, lease: {}s, domain: {:?})",
+            cfg.dhcp.interface, start, end, cfg.dhcp.lease_time, cfg.dhcp.domain);
+    } else {
+        tracing::info!("DHCP: disabled");
+    }
+
+    // Web / API
+    tracing::info!("Web server ports: {:?}", cfg.webserver.ports);
+
+    // Database
+    tracing::info!("Gravity DB: {}", cfg.database.gravity_db.display());
+    tracing::info!("Nimbus DB: {}", cfg.database.nimbus_db.display());
+
+    // Fetcher / blocking
+    tracing::info!("Blocklist source: {}", cfg.blocking.source_url);
+    tracing::info!("Blocklist refresh interval: {}s", cfg.blocking.refresh_interval);
+
+    tracing::info!("=== end configuration summary ===");
+}
+
 /// Log levels that map to original log level semantics
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum NimbusLogLevel {

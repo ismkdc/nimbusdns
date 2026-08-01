@@ -9,7 +9,7 @@ use hickory_proto::op::{
     Message, OpCode, ResponseCode,
 };
 use hickory_proto::rr::{RecordType, DNSClass, RData};
-use tracing::{warn, debug, trace};
+use tracing::{warn, debug};
 
 use crate::AppState;
 use crate::config::{BlockingMode, DnsUpstream};
@@ -74,7 +74,7 @@ impl QueryRouter {
         let domain = question.name().to_utf8();
         let qtype = question.query_type();
 
-        trace!("Query: {} {} from {}", domain, qtype, client_addr);
+        debug!("Query: {} {} from {} (id={})", domain, qtype, client_addr, id);
 
         // 1. Rate limiting
         if self.rate_limiter.is_rate_limited(&client_addr) {
@@ -105,7 +105,7 @@ impl QueryRouter {
         };
 
         if let Some(cached) = self.cache.get(&cache_key) {
-            trace!("Cache hit: {} {}", domain, qtype);
+            debug!("Cache hit: {} {} from {} (hits={})", domain, qtype, client_addr, cached.hits.load(std::sync::atomic::Ordering::Relaxed));
             self.log_query(id, &domain, qtype, &client_addr, 2, start.elapsed());
             // Rewrite response: update transaction ID + TTLs
             let mut resp = cached.data.to_vec();
@@ -155,11 +155,15 @@ impl QueryRouter {
                         self.cache.insert(cache_key.clone(), cached);
                     }
 
+                    let status = response.metadata.response_code;
+                    debug!("Forwarded {} {} via {} -> {:?} in {:?} (cached_ttl={}s)",
+                        domain, qtype, upstream_label(upstream), status, start.elapsed(), ttl);
+
                     self.log_query(id, &domain, qtype, &client_addr, 3, start.elapsed());
                     return QueryResult::Response(response_bytes);
                 }
                 Err(e) => {
-                    debug!("Upstream {} failed: {}", upstream_label(upstream), e);
+                    debug!("Upstream {} failed for {} {}: {} ({:?})", upstream_label(upstream), domain, qtype, e, start.elapsed());
                 }
             }
         }
