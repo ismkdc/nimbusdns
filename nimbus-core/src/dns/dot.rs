@@ -135,9 +135,15 @@ impl DotManager {
                     }
                 };
 
-                // Send query to the connection task (bounded channel)
-                sender.send(dot_query).await
-                    .map_err(|_| DotError::QueueFull)?;
+                // Send query to the connection task (bounded channel).
+                // If the send fails (channel closed because the task died),
+                // drop the stale sender from the map so the next attempt
+                // spawns a fresh connection instead of returning QueueFull
+                // forever (B12).
+                if sender.send(dot_query).await.is_err() {
+                    self.upstreams.lock().remove(&addr);
+                    return Err(DotError::QueueFull);
+                }
 
                 // Wait for response with timeout
                 tokio::time::timeout(timeout, reply_rx)

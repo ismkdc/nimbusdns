@@ -47,7 +47,11 @@ pub fn start(
             info!("Gravity database has {} domains, skipping initial fetch", domain_count);
         }
 
-        let mut interval = tokio::time::interval(refresh_interval);
+        // Start the interval AFTER the initial fetch: `tokio::time::interval`
+        // fires its first tick immediately, which would cause a redundant
+        // second download right after the startup fetch above.
+        let first = tokio::time::Instant::now() + refresh_interval;
+        let mut interval = tokio::time::interval_at(first, refresh_interval);
         let mut rx = shutdown_rx;
 
         loop {
@@ -73,6 +77,14 @@ pub async fn fetch_and_import(gravity: &GravityDb, source_url: &str) -> Result<(
         .build()?;
 
     let response = client.get(source_url).send().await?;
+    // Explicit status check — a 404/5xx error page would otherwise be parsed
+    // as a (tiny) hosts file and only caught indirectly via MIN_DOMAINS.
+    if !response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Blocklist fetch failed with HTTP {}",
+            response.status()
+        ));
+    }
     let body = response.text().await?;
 
     let domains = parse_hosts_file(&body);

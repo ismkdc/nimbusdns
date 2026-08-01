@@ -127,23 +127,23 @@ impl BlockingLists {
         // Load gravity (all blocked domains from adlists)
         let wildcard_deny = WildcardMatcher::default();
         let gravity_domains = gravity.get_all_gravity_domains()?;
-        {
-            let mut wildcard_count = 0;
-            for domain in gravity_domains {
-                let trimmed = domain.trim();
-                if trimmed.starts_with("*.") || trimmed.starts_with('*') {
-                    // Wildcard - store in O(labels) matcher (not regex)
-                    wildcard_deny.insert(trimmed);
-                    wildcard_count += 1;
-                } else {
-                    gravity_exact.insert(trimmed.to_lowercase());
-                }
+        let mut wildcard_count = 0;
+        for domain in gravity_domains {
+            let trimmed = domain.trim();
+            if trimmed.starts_with("*.") || trimmed.starts_with('*') {
+                // Wildcard - store in O(labels) matcher (not regex)
+                wildcard_deny.insert(trimmed);
+                wildcard_count += 1;
+            } else {
+                gravity_exact.insert(trimmed.to_lowercase());
             }
-            info!("Loaded {} gravity domains ({} exact, {} wildcard)",
-                gravity_exact.len() + wildcard_count, gravity_exact.len(), wildcard_count);
         }
+        info!("Loaded {} gravity domains ({} exact, {} wildcard)",
+            gravity_exact.len() + wildcard_count, gravity_exact.len(), wildcard_count);
 
-        let total_blocked = gravity_exact.len() + denylist_exact.len();
+        // Count wildcards and deny regexes in the total so the metric shown
+        // by the API matches what actually blocks (B8).
+        let total_blocked = gravity_exact.len() + denylist_exact.len() + wildcard_count + denylist_regex.len();
         let adlist_count = gravity.adlist_count()? as usize;
 
         info!("Blocking lists loaded ({} total blocked, {} adlists)", total_blocked, adlist_count);
@@ -462,7 +462,8 @@ mod tests {
         for d in gravity_domains { gravity_exact.insert(d.to_lowercase()); }
         let wildcard_deny = WildcardMatcher::default();
         for w in wildcard { wildcard_deny.insert(w); }
-        let total_blocked = gravity_exact.len() + denylist_exact.len();
+        // Match production `BlockingLists::load`: wildcards + deny regexes count
+        let total_blocked = gravity_exact.len() + denylist_exact.len() + wildcard.len();
         BlockingLists {
             allowlist_exact,
             denylist_exact,
@@ -481,6 +482,16 @@ mod tests {
         assert_eq!(lists.check_blocked("ads.example.com"), BlockingDecision::Blocked("wildcard".into()));
         assert_eq!(lists.check_blocked("banner.ads.example.com"), BlockingDecision::Blocked("wildcard".into()));
         assert_eq!(lists.check_blocked("safe.example.com"), BlockingDecision::NotBlocked);
+        // total_blocked must include the wildcard (B8)
+        assert_eq!(lists.total_blocked(), 1);
+    }
+
+    #[test]
+    fn test_total_blocked_counts_wildcards() {
+        // 2 exact gravity + 3 wildcards + 2 exact deny = 7
+        let lists = lists_with(&[], &["d1.com", "d2.com"], &["g1.com", "g2.com"],
+            &["*.w1.com", "*.w2.com", "*.w3.com"]);
+        assert_eq!(lists.total_blocked(), 7);
     }
 
     #[test]

@@ -68,7 +68,7 @@ impl QueryRouter {
 
         let question = match query.queries.first() {
             Some(q) => q,
-            None => return make_error_response(id, ResponseCode::FormErr),
+            None => return make_error_response(id, &query, ResponseCode::FormErr),
         };
 
         let domain = question.name().to_utf8();
@@ -81,7 +81,7 @@ impl QueryRouter {
             debug!("Rate limited: {} from {}", domain, client_addr);
             // Log with RateLimited status (7) so query stats reflect it
             self.log_query(id, &domain, qtype, &client_addr, 7, start.elapsed());
-            return make_error_response(id, ResponseCode::Refused);
+            return make_error_response(id, &query, ResponseCode::Refused);
         }
 
         // 2. Blocking check - in-memory (no SQLite per query)
@@ -166,7 +166,7 @@ impl QueryRouter {
 
         warn!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
         self.log_query(id, &domain, qtype, &client_addr, 5, start.elapsed());
-        make_error_response(id, ResponseCode::ServFail)
+        make_error_response(id, &query, ResponseCode::ServFail)
     }
 
     fn log_query(&self, _id: u16, domain: &str, qtype: RecordType, client: &std::net::SocketAddr, status: i32, elapsed: Duration) {
@@ -333,12 +333,17 @@ fn make_blocked_response(id: u16, query: &Message, mode: BlockingMode, qtype: Re
 
     match response.to_vec() {
         Ok(bytes) => QueryResult::Response(bytes),
-        Err(_) => make_error_response(id, ResponseCode::ServFail),
+        Err(_) => make_error_response(id, query, ResponseCode::ServFail),
     }
 }
 
-fn make_error_response(id: u16, rcode: ResponseCode) -> QueryResult {
+fn make_error_response(id: u16, query: &Message, rcode: ResponseCode) -> QueryResult {
     let mut response = Message::error_msg(id, OpCode::Query, rcode);
+    // Echo the question(s) back so strict clients can match the response
+    // (RFC 1035 §4.1.3 — the response question must mirror the query).
+    for q in &query.queries {
+        response.add_query(q.clone());
+    }
     // Add EDNS0 OPT pseudo-record
     add_edns0(&mut response);
     match response.to_vec() {
@@ -573,7 +578,21 @@ mod tests {
         assert_eq!(msg.additionals[0].ttl, 0);
     }
 
-    // ── Test 26: Null + A → 0.0.0.0, NoError ────────────────────────────
+    // ── Test: error responses echo the question (B13) ────────────────────
+    #[test]
+    fn test_error_response_echoes_question() {
+        let q = query_a("echo.example.com");
+        let result = make_error_response(42, &q, ResponseCode::ServFail);
+        let resp = decode_response(result);
+        assert_eq!(resp.metadata.response_code, ResponseCode::ServFail);
+        assert_eq!(resp.queries.len(), 1, "error response must echo the question");
+        assert_eq!(
+            resp.queries[0].name().to_utf8().trim_end_matches('.'),
+            "echo.example.com"
+        );
+    }
+
+    // ── Test: null + A → 0.0.0.0, NoError ────────────────────────────
     #[test]
     fn test_null_a() {
         let q = query_a("blocked.test");

@@ -197,19 +197,19 @@ impl GravityDb {
     }
 
     /// Replace all gravity domains with a new list using a transaction.
+    /// An empty list clears the table (a fetch that legitimately returns
+    /// nothing must wipe stale entries — B10).
     pub fn replace_all_gravity(&self, domains: &[String]) -> Result<(), DatabaseError> {
-        if domains.is_empty() {
-            return Ok(());
-        }
         self.conn.with_conn(|conn| {
             let txn = conn.transaction()?;
             txn.execute_batch("DELETE FROM gravity")?;
+            let mut stmt = txn.prepare(
+                "INSERT INTO gravity (domain, adlist_id) VALUES (?1, 0)"
+            )?;
             for domain in domains {
-                txn.execute(
-                    "INSERT INTO gravity (domain, adlist_id) VALUES (?1, 0)",
-                    rusqlite::params![domain],
-                )?;
+                stmt.execute(rusqlite::params![domain])?;
             }
+            drop(stmt);
             txn.commit()?;
             Ok(())
         })
@@ -535,6 +535,7 @@ fn domain_matches_pattern(domain: &str, pattern: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    use super::*;
     use crate::blocking::BlockingLists;
 
     #[test]
@@ -557,6 +558,29 @@ mod tests {
         let re = BlockingLists::compile_regex("/^tracker\\..*\\.example\\.com$/").unwrap();
         assert!(re.is_match("tracker.sub.example.com"));
         assert!(!re.is_match("safe.example.com"));
+    }
+
+    #[test]
+    fn test_replace_all_gravity_clears_on_empty() {
+        // An empty replacement must wipe existing entries (B10) — previously
+        // it silently returned Ok(()) and left stale data in place.
+        let db = GravityDb::open(std::path::Path::new(":memory:"), 1000).unwrap();
+        db.replace_all_gravity(&["ads.example.com".to_string()]).unwrap();
+        assert_eq!(db.get_all_gravity_domains().unwrap().len(), 1);
+
+        // Empty replacement → table must be cleared
+        db.replace_all_gravity(&[]).unwrap();
+        assert_eq!(db.get_all_gravity_domains().unwrap().len(), 0, "empty replace must clear");
+    }
+
+    #[test]
+    fn test_replace_all_gravity_swaps() {
+        let db = GravityDb::open(std::path::Path::new(":memory:"), 1000).unwrap();
+        db.replace_all_gravity(&["a.com".to_string(), "b.com".to_string()]).unwrap();
+        db.replace_all_gravity(&["c.com".to_string()]).unwrap();
+        let domains = db.get_all_gravity_domains().unwrap();
+        assert_eq!(domains.len(), 1);
+        assert_eq!(domains[0], "c.com", "old entries must be replaced, not appended");
     }
 
 }

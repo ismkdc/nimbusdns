@@ -373,32 +373,28 @@ where
 // =============================================================================
 
 async fn get_stats(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
-    let stats = match state.app_state.database.nimbus_db.get_stats() {
-        Ok(s) => s,
-        Err(e) => return api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()),
-    };
+    // Use the O(1) in-memory atomic counters (overTime) instead of 4 full
+    // table COUNT(*) scans on every dashboard load.
+    let snap = state.app_state.over_time.get_snapshot();
+    let total = snap.total_queries.max(0) as u64;
+    let blocked = snap.blocked_queries.max(0) as u64;
+    let cached = snap.cached_queries.max(0) as u64;
+    let forwarded = snap.forwarded_queries.max(0) as u64;
 
-    let uptime = state.api_state.start_time.elapsed().as_secs();
-    let qps = if uptime > 0 {
-        stats.total as f64 / uptime as f64
-    } else {
-        0.0
-    };
-
-    let percent = if stats.total > 0 {
-        (stats.blocked as f64 / stats.total as f64) * 100.0
+    let percent = if total > 0 {
+        (blocked as f64 / total as f64) * 100.0
     } else {
         0.0
     };
 
     api_ok(StatsSummary {
-        total_queries: stats.total,
-        blocked_queries: stats.blocked,
+        total_queries: total as i64,
+        blocked_queries: blocked as i64,
         percent_blocked: percent,
-        cached_queries: stats.cached,
-        forwarded_queries: stats.forwarded,
-        query_per_second: qps,
-        uptime_seconds: uptime,
+        cached_queries: cached as i64,
+        forwarded_queries: forwarded as i64,
+        query_per_second: snap.queries_per_second,
+        uptime_seconds: snap.uptime_seconds,
     })
 }
 
@@ -654,7 +650,8 @@ async fn get_queries(
         status: params.status,
         from: params.from,
         until: params.until,
-        limit: params.limit.unwrap_or(100).min(1000),
+        // Negative limit would become SQLite `LIMIT -5` = unlimited (B11).
+        limit: params.limit.unwrap_or(100).clamp(1, 1000),
         offset: params.offset.unwrap_or(0).max(0),
     };
 
@@ -783,9 +780,12 @@ async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
 }
 
 async fn get_health(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
+    // Actually probe the DB instead of always reporting healthy (B9).
+    let db_ok = state.app_state.database.nimbus_db.todays_queries().is_ok();
+    let status = if db_ok { "healthy" } else { "degraded" };
     api_ok(HealthInfo {
-        status: "healthy".to_string(),
-        database: true,
+        status: status.to_string(),
+        database: db_ok,
         upstreams: state.app_state.config.read().dns.upstreams.len() as u64,
         cache_entries: 0,
     })
@@ -796,19 +796,19 @@ async fn setup_password(
     State(state): State<Arc<InternalState>>,
     headers: axum::http::HeaderMap,
     Json(body): Json<auth::AuthRequest>,
-) -> Result<(StatusCode, Json<serde_json::Value>), String> {
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // If password is already set, require a valid session to change it
     if auth::is_auth_enabled(&state.app_state.config.read().webserver.password_hash) {
         let sid = auth::extract_sid_from_headers(&headers)
-            .ok_or_else(|| "Authentication required".to_string())?;
+            .ok_or_else(|| api_err(StatusCode::UNAUTHORIZED, "Authentication required"))?;
         auth::validate_session(&state.app_state.database.nimbus_db, &sid)
-            .map_err(|_| "Authentication required".to_string())?;
+            .map_err(|_| api_err(StatusCode::UNAUTHORIZED, "Authentication required"))?;
     }
     let password = body.password.as_deref().unwrap_or("");
     if password.is_empty() {
-        return Err("Password cannot be empty".to_string());
+        return Err(api_err(StatusCode::BAD_REQUEST, "Password cannot be empty"));
     }
-    let hashed = auth::hash_password(password).map_err(|e| format!("Hash error: {}", e))?;
+    let hashed = auth::hash_password(password).map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     let mut config = state.app_state.config.write();
     config.webserver.password_hash = Some(hashed);
     // Write to config file
@@ -816,7 +816,7 @@ async fn setup_password(
     let cfg_clone = config.clone();
     drop(config);
     write_config_file(&cfg_clone, &path)
-        .map_err(|e| format!("Config write error: {}", e))?;
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     Ok(api_ok(serde_json::json!({"status": "password_set"})))
 }
 
@@ -1143,13 +1143,17 @@ async fn get_blocklist_entries(
     State(state): State<Arc<InternalState>>,
     Query(params): Query<QueriesParams>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let page = params.offset.unwrap_or(1).max(1) as usize;
-    let limit = params.limit.unwrap_or(100).min(1000) as usize;
+    // `offset` is a row offset (consistent with /api/queries), not a page
+    // number. Convert to the 1-based page the DB layer expects.
+    let limit = params.limit.unwrap_or(100).clamp(1, 1000) as usize;
+    let offset = params.offset.unwrap_or(0).max(0) as usize;
+    // limit is clamped to >= 1, so this is always a valid page number
+    let page = offset / limit + 1;
     match state.app_state.database.gravity.get_gravity_entries(page, limit) {
         Ok((domains, total)) => Ok(api_ok(serde_json::json!({
             "entries": domains,
             "total": total,
-            "page": page,
+            "offset": offset,
             "limit": limit,
         }))),
         Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),

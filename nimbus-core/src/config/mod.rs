@@ -713,7 +713,7 @@ impl Config {
                 })?;
             }
             ["dns", "query", "log"] | ["dns", "queryLog"] => {
-                self.dns.query_log = value == "true" || value == "1";
+                self.dns.query_log = parse_bool_env(value)?;
             }
             ["dns", "blocking", "ip"] | ["dns", "blockingIp"] => {
                 self.dns.blocking_ip = value.parse().map_err(|_| {
@@ -724,7 +724,7 @@ impl Config {
                 self.webserver.ports = value.split(',').map(|s| s.trim().to_string()).collect();
             }
             ["dhcp", "enabled"] => {
-                self.dhcp.enabled = value == "true" || value == "1";
+                self.dhcp.enabled = parse_bool_env(value)?;
             }
             ["dhcp", "pool", "start"] | ["dhcp", "poolStart"] => {
                 if let Ok(ip) = value.parse() { self.dhcp.pool_start = Some(ip); }
@@ -929,6 +929,17 @@ fn parse_upstreams(input: &str) -> Result<Vec<DnsUpstream>, ConfigError> {
     Ok(upstreams)
 }
 
+/// Parse an environment-provided boolean: accepts true/false/1/0
+/// (case-insensitive). Rejects anything else instead of silently defaulting
+/// to false (B15).
+fn parse_bool_env(value: &str) -> Result<bool, ConfigError> {
+    match value.to_ascii_lowercase().as_str() {
+        "true" | "1" | "yes" | "on" => Ok(true),
+        "false" | "0" | "no" | "off" => Ok(false),
+        _ => Err(ConfigError::Validation(format!("Invalid boolean value: {}", value))),
+    }
+}
+
 fn parse_blocking_mode(s: &str) -> Result<BlockingMode, ConfigError> {
     match s.to_uppercase().as_str() {
         "NULL" => Ok(BlockingMode::Null),
@@ -1027,5 +1038,23 @@ mod tests {
         cfg.dhcp.pool_end = Some("192.168.1.100".parse().unwrap());
         cfg.dhcp.lease_time = 0;
         assert!(cfg.validate().is_ok(), "disabled DHCP must not be validated");
+    }
+
+    // -- env boolean parsing (B15) ----------------------------------------
+
+    #[test]
+    fn test_parse_bool_env_case_insensitive() {
+        assert!(parse_bool_env("TRUE").unwrap());
+        assert!(parse_bool_env("True").unwrap());
+        assert!(parse_bool_env("1").unwrap());
+        assert!(parse_bool_env("yes").unwrap());
+        assert!(!parse_bool_env("FALSE").unwrap());
+        assert!(!parse_bool_env("0").unwrap());
+    }
+
+    #[test]
+    fn test_parse_bool_env_rejects_invalid() {
+        assert!(parse_bool_env("banana").is_err());
+        assert!(parse_bool_env("").is_err());
     }
 }

@@ -17,6 +17,14 @@ static LOG_INITIALIZED: OnceLock<bool> = OnceLock::new();
 /// Reads RUST_LOG environment variable for filtering.
 /// Default: "info,nimbus=debug"
 pub fn init() -> anyhow::Result<()> {
+    init_with_file(None)
+}
+
+/// Initialize logging with an optional log file. When a file is given (e.g.
+/// from `files.log_file` in the config), logs are written to it instead of
+/// stdout — otherwise a daemonized process (whose stdout is /dev/null) would
+/// silently lose all logs (B16).
+pub fn init_with_file(log_file: Option<&std::path::Path>) -> anyhow::Result<()> {
     if LOG_INITIALIZED.get().is_some() {
         return Ok(());
     }
@@ -29,18 +37,33 @@ pub fn init() -> anyhow::Result<()> {
                 .expect("Invalid RUST_LOG filter")
         });
 
-    // Register the log layer (console)
+    // Register the log layer (console, or file when configured)
     let fmt_layer = fmt::Layer::default()
         .with_target(true)
         .with_line_number(true)
         .with_thread_ids(true)
         .with_file(true)
-        .with_ansi(true);
+        .with_ansi(log_file.is_none());
 
-    tracing_subscriber::registry()
-        .with(env_filter)
-        .with(fmt_layer)
-        .init();
+    match log_file {
+        Some(path) => {
+            let file = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(path)
+                .map_err(|e| anyhow::anyhow!("Failed to open log file {}: {}", path.display(), e))?;
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt_layer.with_writer(file))
+                .init();
+        }
+        None => {
+            tracing_subscriber::registry()
+                .with(env_filter)
+                .with(fmt_layer)
+                .init();
+        }
+    }
 
     LOG_INITIALIZED.set(true).ok();
 

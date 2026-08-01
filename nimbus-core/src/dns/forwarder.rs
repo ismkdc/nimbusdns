@@ -15,15 +15,43 @@ use crate::config::DnsUpstream;
 
 const MAX_DNS_SIZE: usize = 4096;
 
+/// A small pool of ephemeral UDP sockets. Sockets are bound once and reused
+/// (avoiding a `bind(0.0.0.0:0)` syscall per query); each socket is checked
+/// out to at most one in-flight query at a time, so DNS IDs cannot collide
+/// across concurrent queries sharing a socket.
+struct SocketPool {
+    idle: parking_lot::Mutex<std::collections::VecDeque<UdpSocket>>,
+}
+
+impl SocketPool {
+    fn new() -> Self {
+        Self { idle: parking_lot::Mutex::new(std::collections::VecDeque::new()) }
+    }
+
+    /// Take an idle socket, or bind a fresh ephemeral one if none available.
+    async fn acquire(&self) -> Result<UdpSocket, std::io::Error> {
+        if let Some(sock) = self.idle.lock().pop_front() {
+            return Ok(sock);
+        }
+        UdpSocket::bind("0.0.0.0:0").await
+    }
+
+    /// Return a socket to the pool for reuse.
+    fn release(&self, sock: UdpSocket) {
+        self.idle.lock().push_back(sock);
+    }
+}
+
 /// DNS forwarder - opens ephemeral UDP socket per query to avoid ID collisions
 pub struct DnsForwarder {
     dot_manager: Arc<super::dot::DotManager>,
     upstreams: Vec<DnsUpstream>,
+    udp_pool: SocketPool,
 }
 
 impl DnsForwarder {
     pub fn new(dot_manager: Arc<super::dot::DotManager>, upstreams: Vec<DnsUpstream>) -> Self {
-        Self { dot_manager, upstreams }
+        Self { dot_manager, upstreams, udp_pool: SocketPool::new() }
     }
 
     pub async fn init(&mut self) -> anyhow::Result<()> {
@@ -65,8 +93,9 @@ impl DnsForwarder {
         timeout_duration: Duration,
     ) -> Result<Message, ForwardError> {
         let remote = SocketAddr::new(address, port);
-        // Bind ephemeral socket - OS assigns random port
-        let socket = UdpSocket::bind("0.0.0.0:0").await
+        // Take a pooled socket (reused — no bind syscall per query) or bind
+        // a fresh ephemeral one if the pool is empty.
+        let socket = self.udp_pool.acquire().await
             .map_err(ForwardError::Io)?;
 
         let result = timeout(timeout_duration, async {
@@ -74,9 +103,12 @@ impl DnsForwarder {
             let mut buf = vec![0u8; MAX_DNS_SIZE];
             let (len, _) = socket.recv_from(&mut buf).await?;
             buf.truncate(len);
-            drop(socket);
             Ok::<_, std::io::Error>(buf)
         }).await;
+
+        // Return the socket to the pool before any TCP fallback so it can be
+        // reused by other in-flight queries.
+        self.udp_pool.release(socket);
 
         match result {
             Ok(Ok(response_bytes)) => {
@@ -281,6 +313,33 @@ mod tests {
         // After truncation: TC bit must be set
         let truncated = r.truncate();
         assert!(response_has_tc(&truncated));
+    }
+
+    // ── Test 8: SocketPool reuses sockets (no bind per query) ────────────
+    #[tokio::test]
+    async fn test_socket_pool_reuses_sockets() {
+        let pool = SocketPool::new();
+        let s1 = pool.acquire().await.unwrap();
+        let addr1 = s1.local_addr().unwrap();
+        // Release, then acquire again — must get the SAME socket back
+        pool.release(s1);
+        let s2 = pool.acquire().await.unwrap();
+        assert_eq!(s2.local_addr().unwrap(), addr1, "socket should be reused from pool");
+    }
+
+    #[tokio::test]
+    async fn test_socket_pool_bounds_concurrent() {
+        let pool = SocketPool::new();
+        // Two concurrent acquires without release → two distinct sockets
+        let a = pool.acquire().await.unwrap();
+        let b = pool.acquire().await.unwrap();
+        assert_ne!(a.local_addr().unwrap(), b.local_addr().unwrap());
+        // Releasing both back allows reuse
+        let addr_a = a.local_addr().unwrap();
+        pool.release(a);
+        pool.release(b);
+        let c = pool.acquire().await.unwrap();
+        assert_eq!(c.local_addr().unwrap(), addr_a, "pool should hand back a released socket");
     }
 }
 

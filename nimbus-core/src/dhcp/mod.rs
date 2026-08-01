@@ -664,9 +664,18 @@ fn reclaim_expired(server: &DhcpServer) {
         });
     }
     if !expired_ips.is_empty() {
+        // Only release an IP if no OTHER active lease still holds it. A
+        // previous double-allocation (MAC B stole an IP from expired MAC A)
+        // must not hand the IP back to the pool while B is still using it.
+        let active_ips: HashSet<u32> = {
+            let leases = server.leases.read();
+            leases.values().map(|l| u32::from(l.ip)).collect()
+        };
         let mut pool = server.pool.write();
         for ip in &expired_ips {
-            pool.release(Ipv4Addr::from(*ip));
+            if !active_ips.contains(ip) {
+                pool.release(Ipv4Addr::from(*ip));
+            }
         }
         debug!("DHCP reclaimed {} expired leases", expired_ips.len());
     }
@@ -714,21 +723,29 @@ fn reclaim_expired(server: &DhcpServer) {
     }
 }
 
-/// Persist a lease to the database
+/// Persist a lease to the database. Runs on the blocking pool so the tokio
+/// worker thread that processed the DHCP packet is never blocked by SQLite
+/// I/O (P2).
 fn persist_lease(server: &DhcpServer, mac: &[u8; 6], ip: Ipv4Addr, hostname: &Option<String>, expires_at: i64) {
     if let Some(ref db) = server.db {
+        let db = db.clone();
         let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
         let ip_u32 = u32::from(ip);
-        let hostname_str = hostname.as_deref().unwrap_or("");
-        let _ = crate::database::queries::persist_dhcp_lease(db, &mac_str, ip_u32, hostname_str, expires_at);
+        let hostname_str = hostname.clone().unwrap_or_default();
+        tokio::task::spawn_blocking(move || {
+            let _ = crate::database::queries::persist_dhcp_lease(&db, &mac_str, ip_u32, &hostname_str, expires_at);
+        });
     }
 }
 
-/// Delete a persisted lease
+/// Delete a persisted lease. Runs on the blocking pool (P2).
 fn delete_persisted_lease(server: &DhcpServer, mac: &[u8; 6]) {
     if let Some(ref db) = server.db {
+        let db = db.clone();
         let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
-        let _ = crate::database::queries::delete_dhcp_lease(db, &mac_str);
+        tokio::task::spawn_blocking(move || {
+            let _ = crate::database::queries::delete_dhcp_lease(&db, &mac_str);
+        });
     }
 }
 
@@ -901,6 +918,28 @@ mod tests {
         let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
         let next = p.next_available(&declined);
         assert_ne!(next, Some(ip("192.168.1.100")), "declined IP must be skipped");
+    }
+
+    #[test]
+    fn test_reclaim_does_not_release_double_allocated_ip() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        // MAC A leases .100 (expired), MAC B later steals the same IP (still
+        // active). Reclaim must NOT release .100 back to the pool, because B
+        // still uses it — otherwise it could be handed to a third client.
+        assert!(server.try_commit_lease(mac(1, 1), ip("192.168.1.100"), now - 10, None));
+        assert!(server.try_commit_lease(mac(2, 2), ip("192.168.1.100"), now + 3600, None));
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+
+        reclaim_expired(&server);
+
+        // .100 must remain allocated (B's active lease holds it)
+        let mut p = server.pool.write();
+        let declined = HashSet::new();
+        let next = p.next_available(&declined);
+        assert_ne!(next, Some(ip("192.168.1.100")), "double-allocated IP must not be released");
+        // The next free IP is .101 (not .100)
+        assert_eq!(next, Some(ip("192.168.1.101")));
     }
 
     // ── Test 7: next_available returns start, start+1 … ──────────────────

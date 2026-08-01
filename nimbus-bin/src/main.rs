@@ -30,12 +30,18 @@ struct Args {
 fn main() -> anyhow::Result<()> {
     let args = Args::parse();
 
-    // Initialize logging BEFORE fork so parent can log
-    logging::init()?;
+    // Read configuration FIRST so we can honor files.log_file for logging
+    // (a daemonized process with stdout=/dev/null would otherwise lose logs).
+    let cfg = match config::Config::load(&args.config) {
+        Ok(c) => c,
+        Err(e) => {
+            // Fall back to console logging so the error is still visible
+            logging::init()?;
+            return Err(e.into());
+        }
+    };
+    logging::init_with_file(cfg.files.log_file.as_deref())?;
     info!("########## NimbusDNS started on {}! ##########", hostname());
-
-    // Read configuration
-    let cfg = config::Config::load(&args.config)?;
     info!("Parsed config file {} successfully", args.config.display());
 
     if args.dump_config {
