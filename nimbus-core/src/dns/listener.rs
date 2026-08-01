@@ -13,6 +13,13 @@ use crate::dns::router::{QueryRouter, QueryResult, truncate_if_needed};
 
 const MAX_DNS_SIZE: usize = 4096;
 
+/// Whether a response of `bytes_len` bytes needs truncation for a UDP client
+/// whose EDNS max payload is `max_payload`. EDNS payloads are always >= 512
+/// (RFC 6891), so anything <= 512 bytes can never require truncation.
+fn needs_truncation(bytes_len: usize, max_payload: usize) -> bool {
+    bytes_len > max_payload.max(512)
+}
+
 /// Start the DNS listener on the given address
 pub async fn start(
     bind_addr: SocketAddr,
@@ -95,12 +102,15 @@ async fn process_udp_query(
 
     match result {
         QueryResult::Response(mut bytes) => {
-            // Truncate if response exceeds UDP max payload (only for UDP)
-            let msg = Message::from_vec(&bytes).ok();
-            if let Some(ref msg) = msg
-                && let Some(truncated) = truncate_if_needed(msg) {
-                    bytes = truncated;
-                }
+            // Fast path: responses <= 512 bytes (RFC 6891 minimum EDNS payload)
+            // can never require truncation, so skip the parse entirely.
+            if needs_truncation(bytes.len(), 512) {
+                let msg = Message::from_vec(&bytes).ok();
+                if let Some(ref msg) = msg
+                    && let Some(truncated) = truncate_if_needed(msg) {
+                        bytes = truncated;
+                    }
+            }
             socket.send_to(&bytes, src).await?;
         }
         QueryResult::ServerFailure => {
@@ -181,5 +191,26 @@ async fn handle_tcp(listener: TcpListener, router: Arc<QueryRouter>, mut shutdow
                 break;
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_needs_truncation_logic() {
+        // Payload sizes from EDNS are always >= 512; below that never truncate
+        assert!(!needs_truncation(512, 512));
+        assert!(!needs_truncation(100, 4096));
+        assert!(needs_truncation(600, 512));
+        assert!(needs_truncation(4097, 4096));
+    }
+
+    #[test]
+    fn test_udp_fast_path_skips_parse_for_small() {
+        // A response at or below the RFC 6891 minimum payload (512) is never truncated
+        assert!(!needs_truncation(512, 4096));
+        assert!(!needs_truncation(512, 512));
     }
 }
