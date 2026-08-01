@@ -165,6 +165,67 @@ pub fn validate_session(db: &QueryDb, sid: &str) -> Result<Session, AuthError> {
     Ok(session)
 }
 
+// =============================================================================
+// Session Cache (in-memory)
+// =============================================================================
+
+/// In-memory session cache. Validates sessions without touching SQLite on
+/// every request. Expired sessions are evicted lazily on access.
+#[derive(Clone)]
+pub struct SessionCache {
+    sessions: DashMap<String, Session>,
+}
+
+impl SessionCache {
+    pub fn new() -> Self {
+        Self { sessions: DashMap::new() }
+    }
+
+    /// Validate a SID. Cache hit: check expiry in memory (no DB). Cache miss:
+    /// load from DB, evict if expired, cache the valid session.
+    pub fn validate(&self, db: &QueryDb, sid: &str) -> Result<Session, AuthError> {
+        let now = chrono::Utc::now().timestamp();
+
+        // Fast path: in-memory
+        if let Some(s) = self.sessions.get(sid) {
+            if s.expires_at >= now {
+                return Ok(s.clone());
+            }
+            drop(s);
+            self.sessions.remove(sid);
+        }
+
+        // Slow path: DB
+        let session = db.get_session(sid)?.ok_or(AuthError::Unauthorized)?;
+        if session.expires_at < now {
+            let _ = db.delete_session(sid);
+            self.sessions.remove(sid);
+            return Err(AuthError::Unauthorized);
+        }
+
+        self.sessions.insert(sid.to_string(), session.clone());
+        Ok(session)
+    }
+
+    /// Cache a session after login.
+    pub fn insert(&self, session: &Session) {
+        self.sessions.insert(session.sid.clone(), session.clone());
+    }
+
+    /// Remove a session from the cache (logout / expiry).
+    pub fn remove(&self, sid: &str) {
+        self.sessions.remove(sid);
+    }
+
+    /// Update a session's expiry in the cache (sliding expiration).
+    #[allow(dead_code)] // reserved for sliding-expiry feature; part of planned SessionCache interface
+    pub fn update_expiry(&self, sid: &str, expires_at: i64) {
+        if let Some(mut s) = self.sessions.get_mut(sid) {
+            s.expires_at = expires_at;
+        }
+    }
+}
+
 /// Extract a SID from request headers.
 /// Checks (in order): `X-API-Key` header, `sid` cookie.
 pub fn extract_sid_from_headers(
@@ -250,6 +311,45 @@ impl AuthRateLimiter {
 #[derive(Debug, Deserialize)]
 pub struct AuthRequest {
     pub password: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use nimbus_core::database::queries::{QueryDb, Session};
+
+    fn test_db() -> QueryDb {
+        QueryDb::open(std::path::Path::new(":memory:"), 1000).unwrap()
+    }
+
+    fn seed_session(db: &QueryDb, sid: &str) -> Session {
+        db.create_session(sid, chrono::Utc::now().timestamp() + 3600, Some("127.0.0.1"), Some("test")).unwrap();
+        db.get_session(sid).unwrap().unwrap()
+    }
+
+    #[test]
+    fn test_session_cache_hit_and_miss() {
+        let db = test_db();
+        let cache = SessionCache::new();
+        // Miss -> DB
+        assert!(cache.validate(&db, "nonexistent").is_err());
+        // Hit path: seed DB, first validate loads into cache
+        let s = seed_session(&db, "abc");
+        let got = cache.validate(&db, "abc").unwrap();
+        assert_eq!(got.sid, "abc");
+        assert_eq!(s.sid, got.sid);
+    }
+
+    #[test]
+    fn test_session_cache_expired_removed() {
+        let db = test_db();
+        let cache = SessionCache::new();
+        // Session already expired
+        db.create_session("old", chrono::Utc::now().timestamp() - 10, None, None).unwrap();
+        assert!(cache.validate(&db, "old").is_err());
+        // Cache must not hold the expired entry
+        assert!(cache.validate(&db, "old").is_err());
+    }
 }
 
 

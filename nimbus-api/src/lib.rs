@@ -67,6 +67,7 @@ pub async fn serve(
             state.config.read().webserver.api_rate_limit as usize,
             60, // 1-minute window
         )),
+        session_cache: auth::SessionCache::new(),
     });
 
     // -- Build router -----------------------------------------------------
@@ -223,6 +224,8 @@ struct InternalState {
     app_state: Arc<AppState>,
     api_state: Arc<ApiState>,
     auth_rate_limiter: Arc<auth::AuthRateLimiter>,
+    /// In-memory session cache (avoids SQLite on every authenticated request)
+    session_cache: auth::SessionCache,
 }
 
 // =============================================================================
@@ -352,7 +355,7 @@ where
                             return Ok(auth::AuthError::Unauthorized.into_response());
                         }
                     };
-                    if let Err(e) = auth::validate_session(&state.app_state.database.nimbus_db, &sid) {
+                    if let Err(e) = state.session_cache.validate(&state.app_state.database.nimbus_db, &sid) {
                         return Ok(e.into_response());
                     }
                 }
@@ -838,6 +841,10 @@ async fn authenticate(
     let timeout = state.app_state.config.read().webserver.session_timeout.max(60);
     let sid = auth::create_session(&state.app_state.database.nimbus_db, Some(&client_ip), None, timeout)?;
 
+    // Cache the new session in memory
+    let session = state.app_state.database.nimbus_db.get_session(&sid)?.ok_or(auth::AuthError::Unauthorized)?;
+    state.session_cache.insert(&session);
+
     // Clear rate limit on success
     state.auth_rate_limiter.record_success(&client_ip);
 
@@ -862,6 +869,7 @@ async fn delete_session(
 
     // Delete the session
     state.app_state.database.nimbus_db.delete_session(&sid)?;
+    state.session_cache.remove(&sid);
 
     Ok(api_ok(serde_json::json!({"status": "logged_out"})))
 }
