@@ -4,7 +4,7 @@
 # Latest stable Rust with all system dependencies for building and debugging.
 # Everything stays inside the container — no host tooling needed.
 
-FROM docker.io/rust:1.96-slim-bookworm
+FROM docker.io/rust:1-bookworm
 
 # Install build deps and useful tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
