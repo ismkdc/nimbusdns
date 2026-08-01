@@ -125,7 +125,7 @@ fn parse_hosts_file(content: &str) -> Vec<String> {
         if domain == "localhost" || domain == "localhost.localdomain" || domain == "broadcasthost" {
             continue;
         }
-        if domain == "255.255.255.255" || domain == "::1" || domain.starts_with("local") {
+        if domain == "255.255.255.255" || domain == "::1" {
             continue;
         }
 
@@ -181,5 +181,24 @@ some bad line
         let domains = parse_hosts_file(content);
         assert_eq!(domains.len(), 1);
         assert_eq!(domains[0], "example.com");
+    }
+
+    #[test]
+    fn test_local_prefix_not_dropped() {
+        // Regression: `localnews.com` etc. are real blocked domains and must
+        // NOT be skipped just because they start with "local".
+        let content = "\
+0.0.0.0 localnews.com
+0.0.0.0 localbitcoins.com
+0.0.0.0 localhost
+0.0.0.0 localhost.localdomain
+0.0.0.0 broadcasthost
+";
+        let domains = parse_hosts_file(content);
+        assert!(domains.contains(&"localnews.com".to_string()));
+        assert!(domains.contains(&"localbitcoins.com".to_string()));
+        assert!(!domains.contains(&"localhost".to_string()));
+        assert!(!domains.contains(&"localhost.localdomain".to_string()));
+        assert!(!domains.contains(&"broadcasthost".to_string()));
     }
 }

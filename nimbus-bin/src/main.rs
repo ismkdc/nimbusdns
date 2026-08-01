@@ -60,8 +60,10 @@ fn main() -> anyhow::Result<()> {
 // -- Async entry point (runs after fork in child process) ---------------
 async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
     // Check for another nimbusdns instance
-    if cfg.misc.check_other_instance {
-        daemon::check_other_instance(&cfg.files.pid_file);
+    if cfg.misc.check_other_instance && daemon::check_other_instance(&cfg.files.pid_file) {
+        // Another instance is running — exit cleanly instead of crashing
+        // later with an opaque bind error on port 53/67/80.
+        anyhow::bail!("Another nimbusdns instance is already running (see {}). Exiting.", cfg.files.pid_file.display());
     }
 
     // Initialize database

@@ -892,6 +892,16 @@ fn json_merge(a: &mut serde_json::Value, b: &serde_json::Value) {
     }
 }
 
+/// Remove secret fields from a config JSON value so they can neither be
+/// leaked through the API nor overwritten via PATCH. Only `setup_password`
+/// is allowed to change the password hash.
+fn strip_secrets_from_config(json: &mut serde_json::Value) {
+    if let Some(obj) = json.as_object_mut()
+        && let Some(ws) = obj.get_mut("webserver").and_then(|v| v.as_object_mut()) {
+            ws.remove("password-hash");
+        }
+}
+
 /// Serialize the full Config to TOML and write to the config file.
 fn write_config_file(config: &nimbus_core::config::Config, path: &std::path::Path) -> Result<(), String> {
     let toml_str = toml::to_string_pretty(config).map_err(|e| format!("TOML serialize: {}", e))?;
@@ -921,6 +931,12 @@ async fn update_config(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // Auth is handled by AuthLayer middleware
 
+    // Never allow the password hash to be set via PATCH — it can only be
+    // changed through /api/auth/setup. Without this, a client could
+    // overwrite the admin password (or lock everyone out) via config.
+    let mut body = body;
+    strip_secrets_from_config(&mut body);
+
     // Deep-merge the body into the current config
     let mut current = serde_json::to_value(&*state.app_state.config.read())
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
@@ -928,6 +944,11 @@ async fn update_config(
 
     // Deserialize merged value back to Config
     let new_config: nimbus_core::config::Config = serde_json::from_value(current)
+        .map_err(|e| api_err(StatusCode::BAD_REQUEST, &format!("Invalid config: {}", e)))?;
+
+    // Validate before persisting — reject configs that would break the
+    // server (e.g. empty upstreams, rate_limit = 0) or prevent restart.
+    new_config.validate()
         .map_err(|e| api_err(StatusCode::BAD_REQUEST, &format!("Invalid config: {}", e)))?;
 
     // Write to config file
@@ -969,8 +990,10 @@ async fn get_config_element(
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     let config = state.app_state.config.read();
     // Convert config to a JSON object and index by element name
-    let value = serde_json::to_value(&*config)
+    let mut value = serde_json::to_value(&*config)
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    // Redact secrets so e.g. GET /api/config/webserver does not leak the hash
+    strip_secrets_from_config(&mut value);
 
     match value.get(&element) {
         Some(section) => Ok(api_ok(section.clone())),
@@ -1016,6 +1039,9 @@ async fn set_blocking_status(
     };
 
     config.dns.blocking_mode = new_mode;
+    // Persist to config file so the change survives restart
+    write_config_file(&config, &state.app_state.config_path)
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     let mode_str = format!("{:?}", new_mode);
     Ok(api_ok(serde_json::json!({"status": "updated", "blocking": mode_str})))
 }
@@ -1132,4 +1158,31 @@ async fn get_endpoints() -> (StatusCode, Json<serde_json::Value>) {
         "/api/logs", "/api/endpoints",
     ];
     api_ok(endpoints)
+}
+
+#[cfg(test)]
+mod config_tests {
+    use super::*;
+
+    #[test]
+    fn test_strip_secrets_removes_password_hash() {
+        let mut json = serde_json::json!({
+            "webserver": {
+                "password-hash": "$argon2id$secret",
+                "ports": ["80o"]
+            },
+            "dns": { "upstreams": [] }
+        });
+        strip_secrets_from_config(&mut json);
+        assert!(json["webserver"].get("password-hash").is_none());
+        assert!(json["webserver"]["ports"].is_array());
+        assert!(json["dns"].is_object());
+    }
+
+    #[test]
+    fn test_strip_secrets_no_webserver_is_noop() {
+        let mut json = serde_json::json!({ "dns": { "upstreams": [] } });
+        strip_secrets_from_config(&mut json);
+        assert_eq!(json["dns"]["upstreams"], serde_json::json!([]));
+    }
 }

@@ -91,48 +91,45 @@ impl BlockingLists {
         let gravity_exact = DashSet::new();
 
         // Load exact allowlist (type = 0)
-        if let Ok(domains) = gravity.get_domainlist_by_type(0) {
-            for domain in domains {
-                allowlist_exact.insert(domain.to_lowercase());
-            }
-            info!("Loaded {} allowlist entries", allowlist_exact.len());
+        let allowlist_domains = gravity.get_domainlist_by_type(0)?;
+        for domain in allowlist_domains {
+            allowlist_exact.insert(domain.to_lowercase());
         }
+        info!("Loaded {} allowlist entries", allowlist_exact.len());
 
         // Load exact denylist (type = 1)
-        if let Ok(domains) = gravity.get_domainlist_by_type(1) {
-            for domain in domains {
-                denylist_exact.insert(domain.to_lowercase());
-            }
-            info!("Loaded {} denylist entries", denylist_exact.len());
+        let denylist_domains = gravity.get_domainlist_by_type(1)?;
+        for domain in denylist_domains {
+            denylist_exact.insert(domain.to_lowercase());
         }
+        info!("Loaded {} denylist entries", denylist_exact.len());
 
         // Load regex allowlist patterns (type = 2)
-        if let Ok(patterns) = gravity.get_domainlist_by_type(2) {
-            for p in patterns {
-                match Self::compile_regex(&p) {
-                    Some(re) => allowlist_regex.push(re),
-                    None => warn!("Invalid allowlist regex pattern: {}", p),
-                }
+        let allow_patterns = gravity.get_domainlist_by_type(2)?;
+        for p in allow_patterns {
+            match Self::compile_regex(&p) {
+                Some(re) => allowlist_regex.push(re),
+                None => warn!("Invalid allowlist regex pattern: {}", p),
             }
-            info!("Loaded {} allowlist regex patterns", allowlist_regex.len());
         }
+        info!("Loaded {} allowlist regex patterns", allowlist_regex.len());
 
         // Load regex denylist patterns (type = 3)
-        if let Ok(patterns) = gravity.get_domainlist_by_type(3) {
-            for p in patterns {
-                match Self::compile_regex(&p) {
-                    Some(re) => denylist_regex.push(re),
-                    None => warn!("Invalid denylist regex pattern: {}", p),
-                }
+        let deny_patterns = gravity.get_domainlist_by_type(3)?;
+        for p in deny_patterns {
+            match Self::compile_regex(&p) {
+                Some(re) => denylist_regex.push(re),
+                None => warn!("Invalid denylist regex pattern: {}", p),
             }
-            info!("Loaded {} denylist regex patterns", denylist_regex.len());
         }
+        info!("Loaded {} denylist regex patterns", denylist_regex.len());
 
         // Load gravity (all blocked domains from adlists)
         let wildcard_deny = WildcardMatcher::default();
-        if let Ok(domains) = gravity.get_all_gravity_domains() {
+        let gravity_domains = gravity.get_all_gravity_domains()?;
+        {
             let mut wildcard_count = 0;
-            for domain in domains {
+            for domain in gravity_domains {
                 let trimmed = domain.trim();
                 if trimmed.starts_with("*.") || trimmed.starts_with('*') {
                     // Wildcard - store in O(labels) matcher (not regex)
@@ -147,7 +144,7 @@ impl BlockingLists {
         }
 
         let total_blocked = gravity_exact.len() + denylist_exact.len();
-        let adlist_count = gravity.adlist_count().unwrap_or(0) as usize;
+        let adlist_count = gravity.adlist_count()? as usize;
 
         info!("Blocking lists loaded ({} total blocked, {} adlists)", total_blocked, adlist_count);
 

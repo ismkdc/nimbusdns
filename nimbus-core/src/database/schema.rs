@@ -20,8 +20,7 @@ CREATE TABLE IF NOT EXISTS queries (
     dbl_adlist_id INTEGER,
     dbl_cache_id INTEGER,
     dbl_regex_id INTEGER,
-    dbl_upstream_id INTEGER,
-    UNIQUE(timestamp, dbl_domain, dbl_client)
+    dbl_upstream_id INTEGER
 );
 
 CREATE INDEX IF NOT EXISTS idx_queries_timestamp ON queries(timestamp);

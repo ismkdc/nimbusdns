@@ -268,26 +268,35 @@ async fn tls_connection_task(
                         let _ = reply_tx.send(Err(DotError::ConnectionClosed));
                         continue;
                     };
+                    // Register the pending entry BEFORE writing so a very fast
+                    // upstream response (received between write and insert)
+                    // still finds its entry and is not discarded as unmatched.
+                    {
+                        let mut map = pending.lock();
+                        map.insert(conn_id, PendingEntry {
+                            reply_tx,
+                            original_dns_id,
+                        });
+                        // Periodically sweep stale entries whose caller timed out
+                        // (reply_tx.is_closed() when the oneshot receiver was dropped)
+                        pending_clean_counter = pending_clean_counter.wrapping_add(1);
+                        if pending_clean_counter.is_multiple_of(64) {
+                            map.retain(|_id, entry| !entry.reply_tx.is_closed());
+                        }
+                    }
                     match writer.write_all(&data).await {
                         Ok(_) => {
-                            {
-                                let mut map = pending.lock();
-                                map.insert(conn_id, PendingEntry {
-                                    reply_tx,
-                                    original_dns_id,
-                                });
-                                // Periodically sweep stale entries whose caller timed out
-                                // (reply_tx.is_closed() when the oneshot receiver was dropped)
-                                pending_clean_counter = pending_clean_counter.wrapping_add(1);
-                                if pending_clean_counter.is_multiple_of(64) {
-                                    map.retain(|_id, entry| !entry.reply_tx.is_closed());
-                                }
-                            }
                             debug!("DoT sent query id={} to {}", conn_id, address);
                         }
                         Err(e) => {
                             error!("DoT write failed for {}: {}", address, e);
-                            let _ = reply_tx.send(Err(DotError::Io(e)));
+                            // Remove the pending entry we registered before writing
+                            // so a stale entry can't leak, then fail the caller.
+                            let mut map = pending.lock();
+                            if let Some(entry) = map.remove(&conn_id) {
+                                let _ = entry.reply_tx.send(Err(DotError::Io(e)));
+                            }
+                            drop(map);
                             // Abort the reader so it doesn't hang around with its own pending reference
                             reader_handle.abort();
                             break;

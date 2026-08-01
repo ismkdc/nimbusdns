@@ -104,13 +104,16 @@ impl DnsCache {
         Some(entry.value().clone())
     }
 
-    /// Insert a new entry, evicting at most one entry (O(1)) if over capacity.
+    /// Insert a new entry, evicting entries (O(1) each) if over capacity.
     pub fn insert(&self, key: CacheKey, response: CachedResponse) {
         // Remove old entry if exists (O(1) in DashMap)
         self.entries.remove(&key);
 
         // Probabilistic eviction: sample up to 8 entries, evict oldest sampled.
-        if self.entries.len() >= self.max_entries {
+        // Loops because under concurrency multiple threads may select the same
+        // oldest candidate — `remove` returns None for all but one, so we keep
+        // evicting until the map is actually under capacity again.
+        while self.entries.len() >= self.max_entries {
             self.evict_one();
         }
 
@@ -353,5 +356,29 @@ mod tests {
         assert!(cache.len() <= 1);
         // Newest entry must be present
         assert!(cache.get(&make_key("s9.com")).is_some());
+    }
+
+    // ── Test 23: concurrent inserts never exceed capacity ────────────────
+    #[test]
+    fn test_eviction_concurrent_inserts_never_exceed_capacity() {
+        use std::sync::Arc;
+        let cache = Arc::new(DnsCache::new(32));
+        let mut handles = Vec::new();
+        for t in 0..8 {
+            let cache = cache.clone();
+            handles.push(std::thread::spawn(move || {
+                for i in 0..200 {
+                    cache.insert(make_key(&format!("t{t}-i{i}.com")), make_response(60));
+                }
+            }));
+        }
+        for h in handles {
+            h.join().unwrap();
+        }
+        assert!(
+            cache.len() <= 32,
+            "concurrent inserts exceeded capacity: {} > 32",
+            cache.len()
+        );
     }
 }

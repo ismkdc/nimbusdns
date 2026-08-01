@@ -83,10 +83,12 @@ impl QueryRouter {
         }
 
         // 2. Blocking check - in-memory (no SQLite per query)
-        if self.blocking.is_blocked(&domain) {
+        // Skip entirely when blocking is disabled (mode == Disabled)
+        let blocking_mode = self.state.config.read().dns.blocking_mode;
+        if blocking_applies(blocking_mode) && self.blocking.is_blocked(&domain) {
             debug!("Blocked: {}", domain);
             let blocking_ip = self.state.config.read().dns.blocking_ip;
-            let response = make_blocked_response(id, &query, self.state.config.read().dns.blocking_mode, qtype, blocking_ip);
+            let response = make_blocked_response(id, &query, blocking_mode, qtype, blocking_ip);
             self.log_query(id, &domain, qtype, &client_addr, 1, start.elapsed());
             return response;
         }
@@ -215,6 +217,13 @@ impl QueryRouter {
     }
 }
 
+/// Whether blocking should be applied for the given mode.
+/// When `Disabled`, blocked domains are forwarded normally instead of
+/// being answered with a blocking response.
+fn blocking_applies(mode: BlockingMode) -> bool {
+    mode != BlockingMode::Disabled
+}
+
 fn make_blocked_response(id: u16, query: &Message, mode: BlockingMode, qtype: RecordType, blocking_ip: std::net::IpAddr) -> QueryResult {
     let mut response = Message::error_msg(id, OpCode::Query, ResponseCode::NoError);
     response.metadata.recursion_desired = query.metadata.recursion_desired;
@@ -312,11 +321,16 @@ fn make_error_response(id: u16, rcode: ResponseCode) -> QueryResult {
     }
 }
 
-/// If a response exceeds the max UDP payload, truncate it with TC bit set.
+/// If a response exceeds the client's max UDP payload, truncate it with TC
+/// bit set. `client_max_payload` is the payload size the CLIENT advertised in
+/// its EDNS OPT record (or 512 if it sent none, per RFC 6891). Using the
+/// response's own EDNS value would be wrong: a client with a 512-byte buffer
+/// would receive an oversized datagram that its kernel silently truncates,
+/// producing a broken (non-TC) DNS response.
 /// Uses hickory-proto's built-in `Message::truncate()` which keeps questions
 /// and sets the TC (Truncated) bit. The client will retry over TCP.
-pub fn truncate_if_needed(msg: &Message) -> Option<Vec<u8>> {
-    let max_size = msg.max_payload() as usize;
+pub fn truncate_if_needed(msg: &Message, client_max_payload: usize) -> Option<Vec<u8>> {
+    let max_size = client_max_payload.max(512);
     if let Ok(bytes) = msg.to_vec()
         && bytes.len() <= max_size {
             return None; // No truncation needed
@@ -426,6 +440,17 @@ mod tests {
             QueryResult::Response(bytes) => Message::from_vec(&bytes).unwrap(),
             _ => panic!("expected Response, got {:?}", result),
         }
+    }
+
+    // ── Test: blocking_applies respects Disabled mode ────────────────────
+    #[test]
+    fn test_blocking_applies_mode() {
+        assert!(blocking_applies(BlockingMode::Null));
+        assert!(blocking_applies(BlockingMode::Nxdomain));
+        assert!(blocking_applies(BlockingMode::Refused));
+        assert!(blocking_applies(BlockingMode::Nodata));
+        assert!(blocking_applies(BlockingMode::Ip));
+        assert!(!blocking_applies(BlockingMode::Disabled));
     }
 
     // ── Test 26: Null + A → 0.0.0.0, NoError ────────────────────────────

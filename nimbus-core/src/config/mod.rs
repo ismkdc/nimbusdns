@@ -770,7 +770,10 @@ impl Config {
         Ok(())
     }
 
-    fn validate(&self) -> Result<(), ConfigError> {
+    /// Validate the configuration. Called at load time and before applying
+    /// a PATCH so an invalid config (e.g. empty upstreams) can never be
+    /// persisted or applied live.
+    pub fn validate(&self) -> Result<(), ConfigError> {
         // Validate upstreams
         if self.dns.upstreams.is_empty() {
             return Err(ConfigError::Validation(

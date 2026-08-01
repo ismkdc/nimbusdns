@@ -119,6 +119,8 @@ impl DhcpServer {
     /// Atomically: conflict-check + lease-insert under a single write lock.
     /// Returns `true` if the lease was committed, `false` if there was a
     /// conflict (IP already leased to a different MAC with active lease).
+    /// If the MAC moves to a new IP, the previous IP is released back to the
+    /// pool so it can be reused (otherwise the pool silently drains).
     pub fn try_commit_lease(
         &self,
         mac: [u8; 6],
@@ -128,6 +130,8 @@ impl DhcpServer {
     ) -> bool {
         let mut leases = self.leases.write();
         let now = chrono::Utc::now().timestamp();
+        // Capture the MAC's previous IP before overwriting the lease entry
+        let old_ip = leases.get(&mac).map(|l| l.ip);
         let conflict = leases.iter().any(|(&k, lease)| {
             lease.ip == ip && k != mac && lease.expires_at > now
         });
@@ -135,7 +139,31 @@ impl DhcpServer {
             return false;
         }
         leases.insert(mac, Lease { ip, mac, hostname, vendor: None, expires_at });
+        // Release the old IP back into the pool on IP change
+        if let Some(old) = old_ip
+            && old != ip {
+                self.pool.write().release(old);
+            }
         true
+    }
+
+    /// Whether a REQUEST for `ip` from `mac` is legitimate (RFC 2131 §4.3.2).
+    /// The requested IP must either be an active offer made to this MAC, or
+    /// this MAC's own active lease. Without this, any client could "steal" an
+    /// in-pool IP that was offered to (or leased to) a different MAC.
+    pub fn can_client_request(&self, mac: [u8; 6], ip: Ipv4Addr) -> bool {
+        let now = chrono::Utc::now().timestamp();
+        // 1. Active lease for this MAC with this IP
+        if let Some(lease) = self.leases.read().get(&mac)
+            && lease.ip == ip && lease.expires_at > now {
+                return true;
+            }
+        // 2. Active (non-expired) offer of this exact IP to this MAC
+        if let Some((expiry, offer_mac)) = self.offered.read().get(&u32::from(ip))
+            && *offer_mac == mac && *expiry > now {
+                return true;
+            }
+        false
     }
 }
 
@@ -405,6 +433,20 @@ async fn handle_dhcp_packet(
 
                 if !valid {
                     warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP not in pool)",
+                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                    let nak = build_nak(&msg, &server);
+                    if let Ok(bytes) = encode_message(&nak) {
+                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
+                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
+                    }
+                    return;
+                }
+
+                // RFC 2131 §4.3.2: the requested IP must have been offered to
+                // this MAC (or be this MAC's own lease). Reject a client that
+                // tries to claim an IP offered/leased to a different MAC.
+                if !server.can_client_request(mac, ip) {
+                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP not offered to this MAC)",
                         ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
                     let nak = build_nak(&msg, &server);
                     if let Ok(bytes) = encode_message(&nak) {
@@ -753,8 +795,65 @@ mod tests {
     }
 
     // ======================================================================
-    // IpPool tests (P0)
+    // can_client_request tests (K3: REQUEST ownership check)
     // ======================================================================
+
+    fn mac(a: u8, b: u8) -> [u8; 6] {
+        [0x02, 0x00, 0x00, a, b, 0x00]
+    }
+
+    #[test]
+    fn test_request_allowed_for_own_offer() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
+        // MAC that received the offer may request that exact IP
+        assert!(server.can_client_request(mac(1, 1), ip("192.168.1.100")));
+        // A different MAC may NOT steal the offered IP
+        assert!(!server.can_client_request(mac(2, 2), ip("192.168.1.100")));
+    }
+
+    #[test]
+    fn test_request_allowed_for_own_lease() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        assert!(server.try_commit_lease(mac(1, 1), ip("192.168.1.100"), now + 3600, None));
+        assert!(server.can_client_request(mac(1, 1), ip("192.168.1.100")));
+        assert!(!server.can_client_request(mac(2, 2), ip("192.168.1.100")));
+    }
+
+    #[test]
+    fn test_request_rejected_without_offer_or_lease() {
+        let server = make_server();
+        // No offer, no lease — a random in-pool IP must be rejected
+        assert!(!server.can_client_request(mac(1, 1), ip("192.168.1.150")));
+    }
+
+    #[test]
+    fn test_request_expired_offer_rejected() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now - 1, mac(1, 1)));
+        assert!(!server.can_client_request(mac(1, 1), ip("192.168.1.100")));
+    }
+
+    #[test]
+    fn test_lease_move_releases_old_pool_ip() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        // Client leases 192.168.1.100
+        assert!(server.try_commit_lease(mac(1, 1), ip("192.168.1.100"), now + 3600, None));
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+        // Client moves to a new IP
+        assert!(server.try_commit_lease(mac(1, 1), ip("192.168.1.101"), now + 3600, None));
+        server.pool.write().mark_allocated(ip("192.168.1.101"));
+        // Old IP must be released back to the pool (free again)
+        let mut p = server.pool.write();
+        let free = p.next_available(&HashSet::new());
+        assert_eq!(free, Some(ip("192.168.1.100")), "old IP should be reusable after lease move");
+        let free2 = p.next_available(&HashSet::new());
+        assert_eq!(free2, Some(ip("192.168.1.102")), "next free should be the following IP");
+    }
 
     // ── Test 7: next_available returns start, start+1 … ──────────────────
     #[test]

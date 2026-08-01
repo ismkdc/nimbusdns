@@ -200,5 +200,45 @@ pub fn run_migrations(conn: &Connection) -> Result<(), DatabaseError> {
         info!("Applied migration v3 (message table)");
     }
 
+    // Migration 4: Drop UNIQUE(timestamp, dbl_domain, dbl_client) from
+    // `queries`. The old constraint + INSERT OR IGNORE silently dropped
+    // repeated queries from the same client/domain within the same second,
+    // causing missing query-log entries and understated statistics.
+    if current_version < 4 {
+        conn.execute_batch(
+            "CREATE TABLE queries_v4 (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                timestamp INTEGER NOT NULL,
+                dbl_domain TEXT NOT NULL,
+                dbl_client TEXT,
+                dbl_forward TEXT,
+                dbl_type INTEGER,
+                dbl_status INTEGER,
+                dbl_reply_time INTEGER,
+                dbl_reply_type INTEGER,
+                dbl_flags INTEGER,
+                dbl_interface TEXT,
+                dbl_elapsed_ms INTEGER,
+                dbl_adlist_id INTEGER,
+                dbl_cache_id INTEGER,
+                dbl_regex_id INTEGER,
+                dbl_upstream_id INTEGER
+            );
+            INSERT INTO queries_v4 SELECT
+                id, timestamp, dbl_domain, dbl_client, dbl_forward, dbl_type,
+                dbl_status, dbl_reply_time, dbl_reply_type, dbl_flags,
+                dbl_interface, dbl_elapsed_ms, dbl_adlist_id, dbl_cache_id,
+                dbl_regex_id, dbl_upstream_id
+            FROM queries;
+            DROP TABLE queries;
+            ALTER TABLE queries_v4 RENAME TO queries;
+            CREATE INDEX IF NOT EXISTS idx_queries_timestamp ON queries(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_queries_domain ON queries(dbl_domain);
+            CREATE INDEX IF NOT EXISTS idx_queries_client ON queries(dbl_client);"
+        )?;
+        conn.execute("INSERT INTO schema_version (version) VALUES (4)", [])?;
+        info!("Applied migration v4 (drop queries UNIQUE constraint)");
+    }
+
     Ok(())
 }

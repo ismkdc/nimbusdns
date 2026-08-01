@@ -172,6 +172,24 @@ mod tests {
     }
 
     #[test]
+    fn test_store_query_same_second_not_dropped() {
+        // Regression: the queries table used to have UNIQUE(timestamp,
+        // dbl_domain, dbl_client) which, combined with INSERT OR IGNORE,
+        // silently dropped repeated queries from the same client for the
+        // same domain within the same second. Both must now be stored.
+        let db = Arc::new(QueryDb::open(
+            std::path::Path::new(":memory:"), 1000,
+        ).unwrap());
+        let mut a = stored(100);
+        a.client = Some("10.0.0.5".into());
+        let mut b = stored(100); // same timestamp, same domain (d100.com)
+        b.client = Some("10.0.0.5".into());
+        db.store_query_batch(&[a, b]).unwrap();
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.total, 2, "both same-second queries must be stored");
+    }
+
+    #[test]
     fn test_flush_batch_sync_writes_and_clears() {
         let db = Arc::new(QueryDb::open(
             std::path::Path::new(":memory:"), 1000,

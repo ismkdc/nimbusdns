@@ -97,6 +97,8 @@ async fn process_udp_query(
 ) -> Result<(), Box<dyn std::error::Error>> {
     let query = Message::from_vec(&data)?;
     let id = query.metadata.id;
+    // Client's advertised EDNS payload size (RFC 6891): 512 if no EDNS.
+    let client_max_payload = query.edns.as_ref().map(|e| e.max_payload()).unwrap_or(512) as usize;
 
     let result = router.route(query, src).await;
 
@@ -104,10 +106,10 @@ async fn process_udp_query(
         QueryResult::Response(mut bytes) => {
             // Fast path: responses <= 512 bytes (RFC 6891 minimum EDNS payload)
             // can never require truncation, so skip the parse entirely.
-            if needs_truncation(bytes.len(), 512) {
+            if needs_truncation(bytes.len(), client_max_payload) {
                 let msg = Message::from_vec(&bytes).ok();
                 if let Some(ref msg) = msg
-                    && let Some(truncated) = truncate_if_needed(msg) {
+                    && let Some(truncated) = truncate_if_needed(msg, client_max_payload) {
                         bytes = truncated;
                     }
             }
@@ -212,5 +214,29 @@ mod tests {
         // A response at or below the RFC 6891 minimum payload (512) is never truncated
         assert!(!needs_truncation(512, 4096));
         assert!(!needs_truncation(512, 512));
+    }
+
+    #[test]
+    fn test_truncation_uses_client_payload() {
+        use hickory_proto::op::{Message, OpCode};
+        use hickory_proto::rr::{Name, RData, Record};
+
+        // Build a response larger than 512 bytes with an EDNS of its own (4096)
+        let mut msg = Message::response(1, OpCode::Query);
+        for i in 0..40 {
+            let name = Name::from_utf8(format!("r{i}.example.com")).unwrap();
+            msg.add_answer(Record::from_rdata(
+                name,
+                300,
+                RData::A(hickory_proto::rr::rdata::A::new(i as u8, 0, 0, 1)),
+            ));
+        }
+        let bytes = msg.to_vec().unwrap();
+        assert!(bytes.len() > 512, "test response must exceed 512 bytes");
+
+        // Client advertised 512 → response must be truncated (TC bit)
+        assert!(truncate_if_needed(&msg, 512).is_some());
+        // Client advertised 4096 → response fits, no truncation
+        assert!(truncate_if_needed(&msg, 4096).is_none());
     }
 }
