@@ -172,6 +172,25 @@ impl DhcpServer {
             }
         false
     }
+
+    /// Handle a client's DECLINE (the client found the IP already in use via
+    /// ARP probe). The IP is quarantined for 10 minutes AND permanently marked
+    /// allocated so that once the quarantine expires it is NOT handed out
+    /// again — otherwise a genuinely in-use IP (e.g. a static/VM host) causes
+    /// an endless DISCOVER→OFFER→REQUEST→ACK→DECLINE loop.
+    pub fn handle_decline(&self, mac: [u8; 6], ip: Ipv4Addr, now: i64) {
+        let ip_u32 = u32::from(ip);
+        // Short-term quarantine: skip it for 10 minutes
+        self.declined.write().insert(ip_u32, now + 600);
+        // PERMANENT: never offer this IP again (survives quarantine expiry).
+        // reclaim_expired only cleans `declined`, not `pool.allocated`.
+        self.pool.write().mark_allocated(ip);
+        self.leases.write().remove(&mac);
+        self.offered.write().remove(&ip_u32);
+        delete_persisted_lease(self, &mac);
+        info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (quarantined 10min, permanently skipped)",
+            ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+    }
 }
 
 struct IpPool {
@@ -369,6 +388,18 @@ async fn handle_dhcp_packet(
             return;
         }
     };
+
+    // Packet-level debug logging: show every incoming message with its MAC,
+    // requested/current IP and relay gateway so we can trace the DORA flow.
+    let requested_opt = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
+        .and_then(|o| match o {
+            dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
+            _ => None,
+        });
+    debug!("DHCP << {:?} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (ciaddr={}, requested={:?}, giaddr={}, src={})",
+        msg_type, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
+        msg.ciaddr(), requested_opt, msg.giaddr(), src_ip);
+
     match msg_type {
         MessageType::Discover => {
             let now = chrono::Utc::now().timestamp();
@@ -543,16 +574,7 @@ async fn handle_dhcp_packet(
                     if ciaddr != Ipv4Addr::UNSPECIFIED { Some(ciaddr) } else { None }
                 });
             if let Some(ip) = declined_ip {
-                let ip_u32 = u32::from(ip);
-                let now = chrono::Utc::now().timestamp();
-                // DO NOT release back to pool — quarantine for 10 minutes
-                // so next_available() skips it and offers a different IP
-                server.declined.write().insert(ip_u32, now + 600);
-                server.leases.write().remove(&mac);
-                server.offered.write().remove(&ip_u32);
-                delete_persisted_lease(&server, &mac);
-                info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (quarantined 10min)",
-                    ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+                server.handle_decline(mac, ip, chrono::Utc::now().timestamp());
             }
         }
         _ => {}
@@ -940,6 +962,28 @@ mod tests {
         assert_ne!(next, Some(ip("192.168.1.100")), "double-allocated IP must not be released");
         // The next free IP is .101 (not .100)
         assert_eq!(next, Some(ip("192.168.1.101")));
+    }
+
+    #[test]
+    fn test_declined_ip_permanently_removed_from_pool() {
+        // Regression: a DECLINE'd IP used to be re-allocated after the 10-min
+        // quarantine expired, causing an endless DECLINE loop for IPs that are
+        // genuinely in use by another device (e.g. a static/VM host). Once
+        // declined, the IP must stay out of the pool permanently.
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        // Simulate the real DECLINE handler on a quarantined IP
+        server.handle_decline(mac(1, 1), ip("192.168.1.100"), now);
+
+        // Quarantine expires (past the 10-min window)
+        reclaim_expired(&server);
+
+        // Even after reclaim, the declined IP must NOT come back to the pool
+        let mut p = server.pool.write();
+        let declined_now = HashSet::new(); // quarantine is gone, only permanent mark remains
+        let next = p.next_available(&declined_now);
+        assert_ne!(next, Some(ip("192.168.1.100")), "declined IP must stay out of the pool");
+        assert_eq!(next, Some(ip("192.168.1.101")), "next free IP after permanent decline");
     }
 
     // ── Test 7: next_available returns start, start+1 … ──────────────────
