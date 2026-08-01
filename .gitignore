@@ -3,3 +3,6 @@
 *.swo
 *~
 .DS_Store
+
+# Superpowers planning artifacts (not part of the project)
+/docs/superpowers/
