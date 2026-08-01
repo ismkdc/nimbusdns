@@ -20,19 +20,26 @@ use super::{DatabaseError, QueryDb};
 const BATCH_SIZE: usize = 100;
 /// Maximum time between flushes (milliseconds)
 const FLUSH_INTERVAL_MS: u64 = 100;
+/// Maximum queue depth before `store` returns an error (backpressure)
+const CHANNEL_BOUND: usize = 4096;
 
 /// The background database writer handle
 #[derive(Clone)]
 pub struct DbWriter {
-    sender: mpsc::UnboundedSender<StoredQuery>,
+    sender: mpsc::Sender<StoredQuery>,
 }
 
 impl DbWriter {
     /// Queue a query to be written to the database asynchronously.
-    /// Returns an error if the background task has stopped.
+    /// Returns an error if the queue is full (backpressure) or the task stopped.
     pub fn store(&self, query: StoredQuery) -> Result<(), DatabaseError> {
-        self.sender.send(query).map_err(|_| {
-            DatabaseError::Migration("Database writer task stopped".into())
+        self.sender.try_send(query).map_err(|e| match e {
+            mpsc::error::TrySendError::Full(_) => {
+                DatabaseError::Migration("Database writer queue full".into())
+            }
+            mpsc::error::TrySendError::Closed(_) => {
+                DatabaseError::Migration("Database writer task stopped".into())
+            }
         })
     }
 }
@@ -40,7 +47,7 @@ impl DbWriter {
 /// Start the background database writer task.
 /// Returns a `DbWriter` handle and the background task's join handle.
 pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) -> DbWriter {
-    let (tx, mut rx) = mpsc::unbounded_channel::<StoredQuery>();
+    let (tx, mut rx) = mpsc::channel::<StoredQuery>(CHANNEL_BOUND);
 
     tokio::spawn(async move {
         info!("Background database writer started");
@@ -57,13 +64,13 @@ pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) 
                         Some(q) => {
                             batch.push(q);
                             if batch.len() >= BATCH_SIZE {
-                                flush_batch(&db, &mut batch);
+                                flush_batch(db.clone(), &mut batch);
                             }
                         }
                         None => {
                             // Channel closed, flush remaining and exit
                             if !batch.is_empty() {
-                                flush_batch(&db, &mut batch);
+                                flush_batch(db.clone(), &mut batch);
                             }
                             info!("Background database writer stopped");
                             break;
@@ -73,13 +80,13 @@ pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) 
                 // Timer-based flush (for low-traffic periods)
                 _ = flush_timer.tick() => {
                     if !batch.is_empty() {
-                        flush_batch(&db, &mut batch);
+                        flush_batch(db.clone(), &mut batch);
                     }
                 }
                 // Shutdown signal
                 _ = shutdown.changed() => {
                     if !batch.is_empty() {
-                        flush_batch(&db, &mut batch);
+                        flush_batch(db.clone(), &mut batch);
                     }
                     info!("Background database writer shutting down");
                     break;
@@ -92,16 +99,56 @@ pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) 
 }
 
 /// Flush a batch of queries to the database in a single transaction.
-fn flush_batch(db: &QueryDb, batch: &mut Vec<StoredQuery>) {
+/// Runs on the blocking pool so the tokio worker thread is never blocked
+/// by SQLite I/O. Always clears the batch — even on failure — so a failed
+/// batch can never accumulate unbounded memory or retry forever.
+fn flush_batch(db: Arc<QueryDb>, batch: &mut Vec<StoredQuery>) {
     if batch.is_empty() {
         return;
     }
     let count = batch.len();
+    let to_write = std::mem::take(batch);
+    tokio::task::spawn_blocking(move || {
+        match db.store_query_batch(&to_write) {
+            Ok(()) => debug!("Wrote {} queries to database", count),
+            Err(e) => error!("Failed to write {} queries: {}", count, e),
+        }
+    });
+}
 
-    if let Err(e) = db.store_query_batch(batch) {
-        error!("Failed to write {} queries: {}", count, e);
-    } else {
-        debug!("Wrote {} queries to database", count);
-        batch.clear();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::database::queries::{QueryStatus, StoredQuery};
+
+    fn stored(timestamp: i64) -> StoredQuery {
+        StoredQuery {
+            timestamp,
+            domain: format!("d{}.com", timestamp),
+            client: Some("192.0.2.1".into()),
+            forward: None,
+            query_type: 1,
+            status: QueryStatus::Forwarded,
+            reply_time: None,
+            reply_type: 0,
+            flags: 0,
+            interface: None,
+            elapsed_ms: Some(1),
+            adlist_id: None,
+            cache_id: None,
+            regex_id: None,
+            upstream_id: None,
+        }
+    }
+
+    #[test]
+    fn test_store_query_batch_roundtrip() {
+        let db = Arc::new(QueryDb::open(
+            std::path::Path::new(":memory:"), 1000,
+        ).unwrap());
+        let queries = vec![stored(1), stored(2)];
+        db.store_query_batch(&queries).unwrap();
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.total, 2);
     }
 }
