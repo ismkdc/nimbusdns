@@ -182,7 +182,7 @@ impl QueryDb {
     pub fn todays_queries(&self) -> Result<i64, DatabaseError> {
         let today = chrono::Utc::now().date_naive();
         let start_of_day = today.and_hms_opt(0, 0, 0)
-            .unwrap()
+            .ok_or_else(|| DatabaseError::Migration("Invalid midnight timestamp".into()))?
             .and_utc()
             .timestamp();
 
@@ -296,15 +296,18 @@ impl QueryDb {
     // Statistics Queries
     // =========================================================================
 
-    /// Get top N domains by query count
+    /// Get top N domains by query count within the last 24 hours.
+    /// The time filter keeps the query bounded (uses idx_queries_timestamp)
+    /// instead of scanning the entire table on every dashboard load.
     pub fn get_top_domains(&self, limit: usize) -> Result<Vec<CountedItem>, DatabaseError> {
+        let cutoff = chrono::Utc::now().timestamp() - 86400;
         self.conn.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT dbl_domain, COUNT(*) as cnt FROM queries \
-                 WHERE dbl_domain IS NOT NULL AND dbl_domain != '' \
-                 GROUP BY dbl_domain ORDER BY cnt DESC LIMIT ?1"
+                 WHERE dbl_domain IS NOT NULL AND dbl_domain != '' AND timestamp >= ?1 \
+                 GROUP BY dbl_domain ORDER BY cnt DESC LIMIT ?2"
             )?;
-            let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            let rows = stmt.query_map(rusqlite::params![cutoff, limit as i64], |row| {
                 Ok(CountedItem {
                     name: row.get(0)?,
                     count: row.get(1)?,
@@ -318,15 +321,16 @@ impl QueryDb {
         })
     }
 
-    /// Get top N clients by query count
+    /// Get top N clients by query count within the last 24 hours.
     pub fn get_top_clients(&self, limit: usize) -> Result<Vec<CountedItem>, DatabaseError> {
+        let cutoff = chrono::Utc::now().timestamp() - 86400;
         self.conn.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT dbl_client, COUNT(*) as cnt FROM queries \
-                 WHERE dbl_client IS NOT NULL AND dbl_client != '' \
-                 GROUP BY dbl_client ORDER BY cnt DESC LIMIT ?1"
+                 WHERE dbl_client IS NOT NULL AND dbl_client != '' AND timestamp >= ?1 \
+                 GROUP BY dbl_client ORDER BY cnt DESC LIMIT ?2"
             )?;
-            let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            let rows = stmt.query_map(rusqlite::params![cutoff, limit as i64], |row| {
                 Ok(CountedItem {
                     name: row.get(0)?,
                     count: row.get(1)?,
@@ -340,15 +344,16 @@ impl QueryDb {
         })
     }
 
-    /// Get top N upstreams by query count
+    /// Get top N upstreams by query count within the last 24 hours.
     pub fn get_top_upstreams(&self, limit: usize) -> Result<Vec<CountedItem>, DatabaseError> {
+        let cutoff = chrono::Utc::now().timestamp() - 86400;
         self.conn.with_conn(|conn| {
             let mut stmt = conn.prepare(
                 "SELECT dbl_forward, COUNT(*) as cnt FROM queries \
-                 WHERE dbl_forward IS NOT NULL AND dbl_forward != '' \
-                 GROUP BY dbl_forward ORDER BY cnt DESC LIMIT ?1"
+                 WHERE dbl_forward IS NOT NULL AND dbl_forward != '' AND timestamp >= ?1 \
+                 GROUP BY dbl_forward ORDER BY cnt DESC LIMIT ?2"
             )?;
-            let rows = stmt.query_map(rusqlite::params![limit as i64], |row| {
+            let rows = stmt.query_map(rusqlite::params![cutoff, limit as i64], |row| {
                 Ok(CountedItem {
                     name: row.get(0)?,
                     count: row.get(1)?,
@@ -720,4 +725,66 @@ pub fn load_dhcp_leases(db: &QueryDb) -> Result<Vec<(String, u32, String, i64)>,
         }
         Ok(result)
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_db() -> QueryDb {
+        QueryDb::open(std::path::Path::new(":memory:"), 1000).unwrap()
+    }
+
+    fn stored(timestamp: i64, domain: &str, client: &str) -> StoredQuery {
+        StoredQuery {
+            timestamp,
+            domain: domain.to_string(),
+            client: Some(client.to_string()),
+            forward: None,
+            query_type: 1,
+            status: QueryStatus::Forwarded,
+            reply_time: None,
+            reply_type: 0,
+            flags: 0,
+            interface: None,
+            elapsed_ms: Some(1),
+            adlist_id: None,
+            cache_id: None,
+            regex_id: None,
+            upstream_id: None,
+        }
+    }
+
+    #[test]
+    fn test_get_top_domains_only_recent() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        // Recent queries (within 24h)
+        db.store_query(stored(now, "hot.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now, "hot.com", "10.0.0.2")).unwrap();
+        // Old query (40h ago) must NOT be included in the top
+        db.store_query(stored(now - 40 * 3600, "old.com", "10.0.0.1")).unwrap();
+
+        let top = db.get_top_domains(10).unwrap();
+        let hot = top.iter().find(|c| c.name == "hot.com").expect("hot.com in top");
+        assert_eq!(hot.count, 2);
+        assert!(
+            !top.iter().any(|c| c.name == "old.com"),
+            "domains older than 24h must be excluded from top stats"
+        );
+    }
+
+    #[test]
+    fn test_get_top_clients_only_recent() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "a.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now, "b.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now - 40 * 3600, "old.com", "10.0.0.9")).unwrap();
+
+        let top = db.get_top_clients(10).unwrap();
+        let c1 = top.iter().find(|c| c.name == "10.0.0.1").expect("recent client in top");
+        assert_eq!(c1.count, 2);
+        assert!(!top.iter().any(|c| c.name == "10.0.0.9"), "old client must be excluded");
+    }
 }

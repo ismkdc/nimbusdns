@@ -254,6 +254,45 @@ impl BlockingLists {
     pub fn adlist_count(&self) -> u64 {
         self.adlist_count as u64
     }
+
+    // =====================================================================
+    // Delta updates — used by the API for single-domain mutations so we
+    // don't reload the entire gravity list (100k+ rows) per change (C2).
+    // =====================================================================
+
+    pub fn add_allow_domain(&mut self, domain: &str) {
+        self.allowlist_exact.insert(domain.trim().to_lowercase());
+    }
+
+    pub fn remove_allow_domain(&mut self, domain: &str) {
+        self.allowlist_exact.remove(domain.trim());
+    }
+
+    pub fn add_deny_domain(&mut self, domain: &str) {
+        let d = domain.trim().to_lowercase();
+        if self.denylist_exact.insert(d) {
+            self.total_blocked += 1;
+        }
+    }
+
+    pub fn remove_deny_domain(&mut self, domain: &str) {
+        if self.denylist_exact.remove(domain.trim()).is_some() {
+            self.total_blocked = self.total_blocked.saturating_sub(1);
+        }
+    }
+
+    pub fn add_gravity_domain(&mut self, domain: &str) {
+        let d = domain.trim().to_lowercase();
+        if self.gravity_exact.insert(d) {
+            self.total_blocked += 1;
+        }
+    }
+
+    pub fn remove_gravity_domain(&mut self, domain: &str) {
+        if self.gravity_exact.remove(domain.trim()).is_some() {
+            self.total_blocked = self.total_blocked.saturating_sub(1);
+        }
+    }
 }
 
 /// Result of a domain blocking check (matches original GravityDb::BlockingDecision)
@@ -492,6 +531,42 @@ mod tests {
         let lists = lists_with(&[], &["d1.com", "d2.com"], &["g1.com", "g2.com"],
             &["*.w1.com", "*.w2.com", "*.w3.com"]);
         assert_eq!(lists.total_blocked(), 7);
+    }
+
+    #[test]
+    fn test_delta_deny_add_remove() {
+        let mut lists = lists_with(&[], &[], &[], &[]);
+        // Add a deny domain → blocked, total increments
+        lists.add_deny_domain("ads.example.com");
+        assert_eq!(lists.check_blocked("ads.example.com"), BlockingDecision::Blocked("exact".into()));
+        assert_eq!(lists.total_blocked(), 1);
+        // Remove → unblocked, total decrements
+        lists.remove_deny_domain("ads.example.com");
+        assert_eq!(lists.check_blocked("ads.example.com"), BlockingDecision::NotBlocked);
+        assert_eq!(lists.total_blocked(), 0);
+    }
+
+    #[test]
+    fn test_delta_gravity_add_remove() {
+        let mut lists = lists_with(&[], &[], &[], &[]);
+        lists.add_gravity_domain("tracker.example.com");
+        assert_eq!(lists.check_blocked("tracker.example.com"), BlockingDecision::Blocked("gravity".into()));
+        assert_eq!(lists.total_blocked(), 1);
+        lists.remove_gravity_domain("tracker.example.com");
+        assert_eq!(lists.check_blocked("tracker.example.com"), BlockingDecision::NotBlocked);
+        assert_eq!(lists.total_blocked(), 0);
+    }
+
+    #[test]
+    fn test_delta_allowlist_wins() {
+        let mut lists = lists_with(&[], &[], &["blocked.example.com"], &[]);
+        // Deny + allowlist the same domain → allowlist wins
+        lists.add_deny_domain("blocked.example.com");
+        lists.add_allow_domain("blocked.example.com");
+        assert_eq!(lists.check_blocked("blocked.example.com"), BlockingDecision::Allowlisted);
+        // Remove from allowlist → blocked again
+        lists.remove_allow_domain("blocked.example.com");
+        assert_eq!(lists.check_blocked("blocked.example.com"), BlockingDecision::Blocked("exact".into()));
     }
 
     #[test]

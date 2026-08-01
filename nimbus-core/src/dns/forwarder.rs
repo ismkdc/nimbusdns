@@ -197,15 +197,22 @@ fn response_has_tc(msg: &Message) -> bool {
     msg.metadata.truncation
 }
 
-/// Validate that the response's first question matches the query's first question
-/// (name + record type). This prevents a mismatched response — e.g. from an ID
-/// collision in DoT — from being cached or returned to the client.
+/// Validate that the response matches the query: the transaction ID, and the
+/// first question's name, record type and class. This prevents a mismatched
+/// or spoofed response (e.g. from an ID collision in DoT, or an off-path
+/// datagram that happens to share the question) from being cached or
+/// returned to the client (C4).
 fn validate_response_question(query: &Message, response: &Message) -> Result<(), ForwardError> {
-    let q = query.queries.first().ok_or(ForwardError::ResponseMismatch)?;
-    let r = response.queries.first().ok_or(ForwardError::ResponseMismatch)?;
-    if q.name() != r.name() || q.query_type() != r.query_type() {
+    if query.metadata.id != response.metadata.id {
         return Err(ForwardError::ResponseMismatch);
     }
+    let q = query.queries.first().ok_or(ForwardError::ResponseMismatch)?;
+    let r = response.queries.first().ok_or(ForwardError::ResponseMismatch)?;
+    if q.name() != r.name()
+        || q.query_type() != r.query_type()
+        || q.query_class() != r.query_class() {
+            return Err(ForwardError::ResponseMismatch);
+        }
     Ok(())
 }
 
@@ -313,6 +320,34 @@ mod tests {
         // After truncation: TC bit must be set
         let truncated = r.truncate();
         assert!(response_has_tc(&truncated));
+    }
+
+    // ── Test: response ID must match query ID (C4) ───────────────────────
+    #[test]
+    fn test_response_mismatched_id_rejected() {
+        let mut q = make_query("example.com", RecordType::A);
+        q.metadata.id = 0x1234;
+        let r = make_response_like(&q);
+        // Matching ID → OK
+        assert!(validate_response_question(&q, &r).is_ok());
+        // Different ID → rejected (prevents spoofed/collided response)
+        let mut bad = r.clone();
+        bad.metadata.id = 0x9999;
+        assert!(validate_response_question(&q, &bad).is_err());
+    }
+
+    // ── Test: response qclass must match query qclass (C4) ───────────────
+    #[test]
+    fn test_response_mismatched_qclass_rejected() {
+        let mut q = make_query("example.com", RecordType::A);
+        q.queries[0].set_query_class(hickory_proto::rr::DNSClass::IN);
+        let r = make_response_like(&q);
+        // Matching class → OK
+        assert!(validate_response_question(&q, &r).is_ok());
+        // Different class → rejected
+        let mut bad = r.clone();
+        bad.queries[0].set_query_class(hickory_proto::rr::DNSClass::CH);
+        assert!(validate_response_question(&q, &bad).is_err());
     }
 
     // ── Test 8: SocketPool reuses sockets (no bind per query) ────────────

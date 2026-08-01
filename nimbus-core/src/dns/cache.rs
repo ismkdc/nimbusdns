@@ -135,9 +135,13 @@ impl DnsCache {
         }
     }
 
+    /// Remove all cache entries for a domain. Both the key and the argument
+    /// are normalized (trailing dot stripped) so "example.com" and
+    /// "example.com." match (C5).
     pub fn remove_domain(&self, domain: &str) -> usize {
+        let needle = domain.trim_end_matches('.');
         let keys: Vec<CacheKey> = self.entries.iter()
-            .filter(|e| e.key().domain == domain)
+            .filter(|e| e.key().domain.trim_end_matches('.') == needle)
             .map(|e| e.key().clone())
             .collect();
         let count = keys.len();
@@ -380,5 +384,27 @@ mod tests {
             "concurrent inserts exceeded capacity: {} > 32",
             cache.len()
         );
+    }
+
+    // ── Test 24: remove_domain matches trailing dot (C5) ─────────────────
+    #[test]
+    fn test_remove_domain_trailing_dot() {
+        let cache = DnsCache::new(10);
+        // Key stored as "example.com." (as resolved from a query)
+        cache.insert(CacheKey {
+            domain: "example.com.".to_string(),
+            qtype: 1,
+            qclass: 1,
+            dnssec_ok: false,
+            ecs_subnet: None,
+        }, make_response(60));
+        cache.insert(make_key("other.com"), make_response(60));
+        assert_eq!(cache.len(), 2);
+
+        // Removal with or without trailing dot must both match
+        let removed = cache.remove_domain("example.com");
+        assert_eq!(removed, 1, "remove_domain must normalize trailing dot");
+        assert_eq!(cache.len(), 1);
+        assert!(cache.get(&make_key("other.com")).is_some());
     }
 }
