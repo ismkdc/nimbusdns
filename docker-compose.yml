@@ -1,6 +1,6 @@
 services:
   nimbusdns:
-    image: ismkdc/nimbusdns:0.5.0-amd64
+    image: ismkdc/nimbusdns:0.5.1-amd64
     container_name: nimbusdns
     restart: unless-stopped
     network_mode: "host"
