@@ -450,32 +450,42 @@ async fn get_recent_blocked(State(state): State<Arc<InternalState>>) -> Result<(
     }
 }
 
-/// POST /api/dns/benchmark - measure TCP latency to a DNS server
+/// POST /api/dns/benchmark - measure TCP latency to a DNS server.
+/// Runs on the blocking pool so a slow/unreachable target (up to 3s per
+/// attempt) never stalls a tokio worker thread that is also serving DNS.
 async fn post_dns_benchmark(
     Json(body): Json<serde_json::Value>,
 ) -> (StatusCode, Json<serde_json::Value>) {
-    let ip = body.get("ip").and_then(|v| v.as_str()).unwrap_or("");
-    let port = body.get("port").and_then(|v| v.as_u64()).unwrap_or(853) as u16;
+    let ip = body.get("ip").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let port = body.get("port").and_then(|v| v.as_u64()).unwrap_or(853);
     if ip.is_empty() {
         return api_ok(serde_json::json!({"error": "ip required"}));
     }
-    let start = std::time::Instant::now();
-    match TcpStream::connect_timeout(
-        &format!("{}:{}", ip, port).parse().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap()),
-        Duration::from_secs(3),
-    ) {
-        Ok(_) => {
-            let ms = start.elapsed().as_millis() as u64;
-            api_ok(serde_json::json!({"latency_ms": ms}))
+    let result = tokio::task::spawn_blocking(move || {
+        let start = std::time::Instant::now();
+        match TcpStream::connect_timeout(
+            &format!("{}:{}", ip, port).parse().unwrap_or_else(|_| "0.0.0.0:0".parse().unwrap()),
+            Duration::from_secs(3),
+        ) {
+            Ok(_) => Some(start.elapsed().as_millis() as u64),
+            Err(_) => None,
         }
-        Err(_) => api_ok(serde_json::json!({"latency_ms": null, "error": "timeout"})),
+    })
+    .await
+    .unwrap_or(None);
+
+    match result {
+        Some(ms) => api_ok(serde_json::json!({"latency_ms": ms})),
+        None => api_ok(serde_json::json!({"latency_ms": null, "error": "timeout"})),
     }
 }
 
 async fn get_blocking_status(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
+    let mode = state.app_state.config.read().dns.blocking_mode;
+    use nimbus_core::config::BlockingMode;
     api_ok(serde_json::json!({
-        "blocking": state.app_state.config.read().dns.blocking_mode,
-        "enabled": true
+        "blocking": mode,
+        "enabled": mode != BlockingMode::Disabled
     }))
 }
 
@@ -880,12 +890,17 @@ async fn delete_session(
 // Config Endpoint Helpers
 // =============================================================================
 
-/// Recursively deep-merge two JSON values (like JSON Merge Patch, RFC 7396).
+/// Recursively deep-merge two JSON values (RFC 7396 JSON Merge Patch).
+/// A `null` value in the patch REMOVES the corresponding key from the target.
 fn json_merge(a: &mut serde_json::Value, b: &serde_json::Value) {
     match (a, b) {
         (serde_json::Value::Object(a), serde_json::Value::Object(b)) => {
             for (k, v) in b {
-                json_merge(a.entry(k.clone()).or_insert(serde_json::Value::Null), v);
+                if v.is_null() {
+                    a.remove(k);
+                } else {
+                    json_merge(a.entry(k.clone()).or_insert(serde_json::Value::Null), v);
+                }
             }
         }
         (a, b) => *a = b.clone(),
@@ -1184,5 +1199,35 @@ mod config_tests {
         let mut json = serde_json::json!({ "dns": { "upstreams": [] } });
         strip_secrets_from_config(&mut json);
         assert_eq!(json["dns"]["upstreams"], serde_json::json!([]));
+    }
+
+    // -- json_merge RFC 7396 null-delete (B7) -----------------------------
+
+    #[test]
+    fn test_json_merge_null_removes_key() {
+        let mut base = serde_json::json!({
+            "dns": { "upstreams": [{"address": "8.8.8.8", "port": 53}], "rate_limit": 100 }
+        });
+        let patch = serde_json::json!({
+            "dns": { "upstreams": null }
+        });
+        json_merge(&mut base, &patch);
+        assert!(
+            base["dns"].get("upstreams").is_none(),
+            "null patch must REMOVE the key, got {:?}",
+            base
+        );
+        // Unrelated sibling keys survive
+        assert_eq!(base["dns"]["rate_limit"], serde_json::json!(100));
+    }
+
+    #[test]
+    fn test_json_merge_nested_object_merge() {
+        let mut base = serde_json::json!({ "a": { "x": 1, "y": 2 }, "b": 3 });
+        let patch = serde_json::json!({ "a": { "y": 20 } });
+        json_merge(&mut base, &patch);
+        assert_eq!(base["a"]["x"], serde_json::json!(1));
+        assert_eq!(base["a"]["y"], serde_json::json!(20));
+        assert_eq!(base["b"], serde_json::json!(3));
     }
 }

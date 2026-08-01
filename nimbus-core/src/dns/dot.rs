@@ -238,9 +238,15 @@ async fn tls_connection_task(
         use tokio::io::AsyncWriteExt;
 
         // Re-establish: drain the channel into writer until reader fails
-        let mut pending_clean_counter: u32 = 0;
+        let mut sweep_timer = tokio::time::interval(Duration::from_secs(5));
         loop {
             tokio::select! {
+                _ = sweep_timer.tick() => {
+                    // Periodically sweep stale entries whose caller timed out
+                    // (reply_tx.is_closed() when the oneshot receiver was dropped).
+                    // Runs on a timer so entries can't leak under low traffic.
+                    sweep_stale_pending(&mut pending.lock());
+                }
                 query = query_rx.recv() => {
                     let query = match query {
                         Some(q) => q,
@@ -277,12 +283,6 @@ async fn tls_connection_task(
                             reply_tx,
                             original_dns_id,
                         });
-                        // Periodically sweep stale entries whose caller timed out
-                        // (reply_tx.is_closed() when the oneshot receiver was dropped)
-                        pending_clean_counter = pending_clean_counter.wrapping_add(1);
-                        if pending_clean_counter.is_multiple_of(64) {
-                            map.retain(|_id, entry| !entry.reply_tx.is_closed());
-                        }
                     }
                     match writer.write_all(&data).await {
                         Ok(_) => {
@@ -358,4 +358,40 @@ async fn read_dns_response(
     reader.read_exact(&mut response).await?;
 
     Ok(response)
+}
+
+/// Remove pending entries whose caller timed out (oneshot receiver dropped).
+/// Called periodically from the writer loop so entries can't leak when
+/// traffic is low (previously only swept every 64 writes — B12).
+fn sweep_stale_pending(pending: &mut HashMap<u16, PendingEntry>) {
+    pending.retain(|_id, entry| !entry.reply_tx.is_closed());
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn pending_entry() -> PendingEntry {
+        let (reply_tx, _rx) = tokio::sync::oneshot::channel();
+        PendingEntry { reply_tx, original_dns_id: 7 }
+    }
+
+    #[test]
+    fn test_sweep_removes_closed_callers() {
+        let mut map = HashMap::new();
+        // Entry 1: caller alive (receiver held)
+        let (tx1, _rx1) = tokio::sync::oneshot::channel();
+        map.insert(1, PendingEntry { reply_tx: tx1, original_dns_id: 1 });
+        // Entry 2: caller timed out (receiver dropped → sender closed)
+        map.insert(2, pending_entry());
+        // Entry 3: also closed
+        map.insert(3, pending_entry());
+
+        sweep_stale_pending(&mut map);
+
+        assert!(map.contains_key(&1), "live caller must be retained");
+        assert!(!map.contains_key(&2), "timed-out caller must be swept");
+        assert!(!map.contains_key(&3), "timed-out caller must be swept");
+        assert_eq!(map.len(), 1);
+    }
 }

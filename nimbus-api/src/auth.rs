@@ -292,7 +292,8 @@ impl AuthRateLimiter {
         let now = chrono::Utc::now().timestamp();
         let mut timestamps = self.attempts.entry(key.to_string()).or_default();
 
-        // Remove entries outside the window
+        // Remove entries outside the window (also prunes the Vec so stale
+        // timestamps for a given key never accumulate unbounded — B9).
         timestamps.retain(|t| *t > now - self.window_secs);
 
         if timestamps.len() >= self.max_attempts {
@@ -391,6 +392,33 @@ mod tests {
         // Remove it from the DB — a warm cache must still serve it from memory
         db.delete_session("warm").unwrap();
         assert!(cache.validate(&db, "warm").is_ok());
+    }
+
+    // -- AuthRateLimiter key cleanup (B9) ---------------------------------
+
+    #[test]
+    fn test_rate_limiter_expired_key_pruned() {
+        let limiter = AuthRateLimiter::new(5, 60);
+        assert!(limiter.check("1.2.3.4"));
+        assert_eq!(limiter.attempts.len(), 1);
+        // Force window expiry by moving timestamps back
+        let past = chrono::Utc::now().timestamp() - 120;
+        limiter.attempts.insert("1.2.3.4".into(), vec![past]);
+        // Next check prunes the expired timestamp and records a fresh one
+        assert!(limiter.check("1.2.3.4"));
+        let entry = limiter.attempts.get("1.2.3.4").unwrap();
+        assert_eq!(entry.len(), 1, "expired timestamps must be pruned, not accumulated");
+    }
+
+    #[test]
+    fn test_rate_limiter_blocks_after_max() {
+        let limiter = AuthRateLimiter::new(3, 60);
+        assert!(limiter.check("9.9.9.9"));
+        assert!(limiter.check("9.9.9.9"));
+        assert!(limiter.check("9.9.9.9"));
+        assert!(!limiter.check("9.9.9.9"), "fourth attempt must be blocked");
+        // Key retained while within window
+        assert_eq!(limiter.attempts.len(), 1);
     }
 }
 

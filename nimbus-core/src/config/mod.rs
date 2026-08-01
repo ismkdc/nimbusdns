@@ -793,6 +793,21 @@ impl Config {
             ));
         }
 
+        // Validate DHCP pool
+        if self.dhcp.enabled {
+            if let (Some(start), Some(end)) = (self.dhcp.pool_start, self.dhcp.pool_end)
+                && start > end {
+                    return Err(ConfigError::Validation(
+                        "DHCP pool_start must be <= pool_end".into(),
+                    ));
+                }
+            if self.dhcp.lease_time == 0 {
+                return Err(ConfigError::Validation(
+                    "DHCP lease_time must be > 0".into(),
+                ));
+            }
+        }
+
         Ok(())
     }
 }
@@ -966,5 +981,51 @@ mod tests {
         assert_eq!(parse_blocking_mode("NULL").unwrap(), BlockingMode::Null);
         assert_eq!(parse_blocking_mode("NXDOMAIN").unwrap(), BlockingMode::Nxdomain);
         assert!(parse_blocking_mode("INVALID").is_err());
+    }
+
+    // -- DHCP validate (B5) ------------------------------------------------
+
+    fn dhcp_cfg() -> Config {
+        let mut cfg = Config::default();
+        cfg.dns.upstreams = vec![DnsUpstream::Plain {
+            address: "8.8.8.8".parse().unwrap(),
+            port: 53,
+        }];
+        cfg.dhcp.enabled = true;
+        cfg
+    }
+
+    #[test]
+    fn test_validate_dhcp_rejects_inverted_pool() {
+        let mut cfg = dhcp_cfg();
+        cfg.dhcp.pool_start = Some("192.168.1.200".parse().unwrap());
+        cfg.dhcp.pool_end = Some("192.168.1.100".parse().unwrap());
+        assert!(cfg.validate().is_err(), "pool_start > pool_end must be rejected");
+    }
+
+    #[test]
+    fn test_validate_dhcp_accepts_valid_pool() {
+        let mut cfg = dhcp_cfg();
+        cfg.dhcp.pool_start = Some("192.168.1.100".parse().unwrap());
+        cfg.dhcp.pool_end = Some("192.168.1.200".parse().unwrap());
+        cfg.dhcp.lease_time = 3600;
+        assert!(cfg.validate().is_ok());
+    }
+
+    #[test]
+    fn test_validate_dhcp_rejects_zero_lease() {
+        let mut cfg = dhcp_cfg();
+        cfg.dhcp.lease_time = 0;
+        assert!(cfg.validate().is_err(), "lease_time = 0 must be rejected");
+    }
+
+    #[test]
+    fn test_validate_ignores_dhcp_when_disabled() {
+        let mut cfg = dhcp_cfg();
+        cfg.dhcp.enabled = false;
+        cfg.dhcp.pool_start = Some("192.168.1.200".parse().unwrap());
+        cfg.dhcp.pool_end = Some("192.168.1.100".parse().unwrap());
+        cfg.dhcp.lease_time = 0;
+        assert!(cfg.validate().is_ok(), "disabled DHCP must not be validated");
     }
 }

@@ -149,10 +149,17 @@ impl DhcpServer {
 
     /// Whether a REQUEST for `ip` from `mac` is legitimate (RFC 2131 §4.3.2).
     /// The requested IP must either be an active offer made to this MAC, or
-    /// this MAC's own active lease. Without this, any client could "steal" an
-    /// in-pool IP that was offered to (or leased to) a different MAC.
+    /// this MAC's own active lease — and it must NOT be quarantined (declined).
+    /// Without this, any client could "steal" an in-pool IP that was offered
+    /// to (or leased to) a different MAC, or reuse an IP the server was told
+    /// is already in use elsewhere.
     pub fn can_client_request(&self, mac: [u8; 6], ip: Ipv4Addr) -> bool {
         let now = chrono::Utc::now().timestamp();
+        // A quarantined (declined) IP is never requestable, even if offered
+        if let Some(until) = self.declined.read().get(&u32::from(ip))
+            && *until > now {
+                return false;
+            }
         // 1. Active lease for this MAC with this IP
         if let Some(lease) = self.leases.read().get(&mac)
             && lease.ip == ip && lease.expires_at > now {
@@ -506,12 +513,22 @@ async fn handle_dhcp_packet(
         }
         MessageType::Release => {
             let ciaddr = msg.ciaddr();
-            if ciaddr != Ipv4Addr::UNSPECIFIED {
+            // RFC 2131 §4.3.2: only release an IP that is this MAC's own
+            // active lease. Otherwise a malicious client could free an IP
+            // currently leased to a different MAC, enabling double-allocation.
+            let owns_lease = {
+                let leases = server.leases.read();
+                leases.get(&mac).map(|l| l.ip == ciaddr).unwrap_or(false)
+            };
+            if ciaddr != Ipv4Addr::UNSPECIFIED && owns_lease {
                 server.pool.write().release(ciaddr);
                 server.leases.write().remove(&mac);
                 delete_persisted_lease(&server, &mac);
                 debug!("DHCP RELEASE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
                     ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+            } else {
+                debug!("DHCP RELEASE ignored for {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP {} not owned by this MAC)",
+                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], ciaddr);
             }
         }
         MessageType::Decline => {
@@ -853,6 +870,37 @@ mod tests {
         assert_eq!(free, Some(ip("192.168.1.100")), "old IP should be reusable after lease move");
         let free2 = p.next_available(&HashSet::new());
         assert_eq!(free2, Some(ip("192.168.1.102")), "next free should be the following IP");
+    }
+
+    // ======================================================================
+    // RELEASE ownership + DECLINE quarantine (B3/B4)
+    // ======================================================================
+
+    #[test]
+    fn test_declined_ip_not_requestable() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        // Quarantine an IP
+        server.declined.write().insert(u32::from(ip("192.168.1.100")), now + 600);
+        // Even with a fresh offer to this MAC, a quarantined IP must not be
+        // grantable via REQUEST.
+        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
+        assert!(
+            !server.can_client_request(mac(1, 1), ip("192.168.1.100")),
+            "quarantined IP must not be requestable"
+        );
+    }
+
+    #[test]
+    fn test_declined_ip_skipped_by_pool() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        server.declined.write().insert(u32::from(ip("192.168.1.100")), now + 600);
+        // Pool must hand out a different IP first
+        let mut p = server.pool.write();
+        let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
+        let next = p.next_available(&declined);
+        assert_ne!(next, Some(ip("192.168.1.100")), "declined IP must be skipped");
     }
 
     // ── Test 7: next_available returns start, start+1 … ──────────────────

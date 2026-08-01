@@ -80,15 +80,33 @@ impl DnsForwarder {
 
         match result {
             Ok(Ok(response_bytes)) => {
-                Message::from_vec(&response_bytes)
-                    .map_err(|e| ForwardError::Decode(e.to_string()))
+                match Message::from_vec(&response_bytes) {
+                    Ok(msg) if response_has_tc(&msg) => {
+                        // TC bit set: response was too large for UDP — retry
+                        // over TCP (RFC 5966) instead of returning a partial
+                        // or truncated answer.
+                        warn!("UDP query to {} returned TC, retrying over TCP", remote);
+                        self.forward_tcp(query_bytes, remote, timeout_duration).await
+                    }
+                    Ok(msg) => Ok(msg),
+                    Err(e) => {
+                        // Undecodable from UDP (e.g. oversized datagram) —
+                        // retry over TCP before giving up.
+                        warn!("UDP query to {} returned undecodable response ({}), retrying over TCP", remote, e);
+                        self.forward_tcp(query_bytes, remote, timeout_duration).await
+                    }
+                }
             }
             Ok(Err(e)) => {
                 // UDP failed, try TCP
                 warn!("UDP query to {} failed: {}, trying TCP", remote, e);
                 self.forward_tcp(query_bytes, remote, timeout_duration).await
             }
-            Err(_) => Err(ForwardError::Timeout),
+            Err(_) => {
+                // UDP timeout — try TCP once before giving up
+                warn!("UDP query to {} timed out, trying TCP", remote);
+                self.forward_tcp(query_bytes, remote, timeout_duration).await
+            }
         }
     }
 
@@ -138,6 +156,13 @@ impl DnsForwarder {
         Message::from_vec(&response_bytes)
             .map_err(|e| ForwardError::Decode(e.to_string()))
     }
+}
+
+/// Whether a DNS message has the TC (truncation) bit set — an indication
+/// the response was too large for UDP and the client should retry over TCP
+/// (RFC 5966). The forwarder uses this to transparently retry over TCP.
+fn response_has_tc(msg: &Message) -> bool {
+    msg.metadata.truncation
 }
 
 /// Validate that the response's first question matches the query's first question
@@ -240,6 +265,22 @@ mod tests {
         let q = make_query("example.com", RecordType::A);
         let r = make_response_like(&q);
         assert!(validate_response_question(&q, &r).is_ok());
+    }
+
+    // ── Test 7: TC bit detection for TCP fallback ─────────────────────────
+    #[test]
+    fn test_response_has_tc_bit_detection() {
+        let q = make_query("example.com", RecordType::A);
+        let r = make_response_like(&q);
+        // Normal response: no TC
+        assert!(!response_has_tc(&r));
+        // Round-trip through bytes preserves TC (unset here)
+        let bytes = r.to_vec().unwrap();
+        let parsed = HickoryMessage::from_vec(&bytes).unwrap();
+        assert!(!response_has_tc(&parsed));
+        // After truncation: TC bit must be set
+        let truncated = r.truncate();
+        assert!(response_has_tc(&truncated));
     }
 }
 

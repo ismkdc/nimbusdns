@@ -79,6 +79,8 @@ impl QueryRouter {
         // 1. Rate limiting
         if self.rate_limiter.is_rate_limited(&client_addr) {
             debug!("Rate limited: {} from {}", domain, client_addr);
+            // Log with RateLimited status (7) so query stats reflect it
+            self.log_query(id, &domain, qtype, &client_addr, 7, start.elapsed());
             return make_error_response(id, ResponseCode::Refused);
         }
 
@@ -115,13 +117,7 @@ impl QueryRouter {
             let elapsed_secs = cached.cached_at.elapsed().as_secs() as u32;
             if elapsed_secs > 0
                 && let Ok(mut msg) = Message::from_vec(&resp) {
-                    for ans in &mut msg.answers {
-                        if ans.ttl > elapsed_secs {
-                            ans.ttl -= elapsed_secs;
-                        } else {
-                            ans.ttl = 0;
-                        }
-                    }
+                    decrement_ttls(&mut msg, elapsed_secs);
                     if let Ok(updated) = msg.to_vec() {
                         resp = updated;
                     }
@@ -140,23 +136,24 @@ impl QueryRouter {
                         Err(_) => continue,
                     };
 
-                    // Fix: rewrite TTL before caching (subtract elapsed time)
+                    // Compute cache TTL: min answer TTL, SOA TTL on negative
+                    // responses (RFC 2308), or 0 (no cache) on SERVFAIL.
                     let elapsed_secs = start.elapsed().as_secs() as u32;
-                    let ttl = response.answers.iter()
-                        .map(|r| r.ttl.saturating_sub(elapsed_secs))
-                        .min()
-                        .unwrap_or(60);
+                    let ttl = cache_ttl_secs(&response).saturating_sub(elapsed_secs);
 
-                    let cached = CachedResponse {
-                        data: Arc::from(response_bytes.as_slice()),
-                        cached_at: Instant::now(),
-                        original_ttl: ttl,
-                        ttl,
-                        qtype: qtype.into(),
-                        qclass: DNSClass::IN.into(),
-                        hits: Default::default(),
-                    };
-                    self.cache.insert(cache_key.clone(), cached);
+                    // Don't cache SERVFAIL or zero-TTL responses
+                    if ttl > 0 {
+                        let cached = CachedResponse {
+                            data: Arc::from(response_bytes.as_slice()),
+                            cached_at: Instant::now(),
+                            original_ttl: ttl,
+                            ttl,
+                            qtype: qtype.into(),
+                            qclass: DNSClass::IN.into(),
+                            hits: Default::default(),
+                        };
+                        self.cache.insert(cache_key.clone(), cached);
+                    }
 
                     self.log_query(id, &domain, qtype, &client_addr, 3, start.elapsed());
                     return QueryResult::Response(response_bytes);
@@ -222,6 +219,35 @@ impl QueryRouter {
 /// being answered with a blocking response.
 fn blocking_applies(mode: BlockingMode) -> bool {
     mode != BlockingMode::Disabled
+}
+
+/// Compute the cache TTL (seconds) for an upstream response.
+/// - Positive answers: min TTL across answers (minus elapsed, caller handles).
+/// - Negative responses (NXDOMAIN/NODATA): SOA TTL from authority (RFC 2308).
+/// - SERVFAIL: 0 (must not be cached — a transient upstream failure should
+///   not be served to clients for 60s).
+fn cache_ttl_secs(response: &Message) -> u32 {
+    if response.metadata.response_code == ResponseCode::ServFail {
+        return 0;
+    }
+    if !response.answers.is_empty() {
+        return response.answers.iter().map(|r| r.ttl).min().unwrap_or(0);
+    }
+    // Negative response: use SOA TTL (or 0 if absent → don't cache)
+    response.authorities.iter()
+        .filter(|r| r.record_type() == RecordType::SOA)
+        .map(|r| r.ttl)
+        .min()
+        .unwrap_or(0)
+}
+
+/// Decrement TTLs across answers, authorities and additionals by `elapsed`
+/// seconds (saturating at 0), per RFC 1035 §4.1.3. All three sections must
+/// age so the client sees consistent TTLs.
+fn decrement_ttls(msg: &mut Message, elapsed: u32) {
+    for rec in msg.answers.iter_mut().chain(msg.authorities.iter_mut()).chain(msg.additionals.iter_mut()) {
+        rec.ttl = rec.ttl.saturating_sub(elapsed);
+    }
 }
 
 fn make_blocked_response(id: u16, query: &Message, mode: BlockingMode, qtype: RecordType, blocking_ip: std::net::IpAddr) -> QueryResult {
@@ -451,6 +477,100 @@ mod tests {
         assert!(blocking_applies(BlockingMode::Nodata));
         assert!(blocking_applies(BlockingMode::Ip));
         assert!(!blocking_applies(BlockingMode::Disabled));
+    }
+
+    fn soa_record(ttl: u32) -> hickory_proto::rr::Record {
+        use hickory_proto::rr::rdata::SOA;
+        use hickory_proto::rr::{Name as RrName, RData};
+        hickory_proto::rr::Record::from_rdata(
+            RrName::from_utf8("example.com").unwrap(),
+            ttl,
+            RData::SOA(SOA::new(
+                RrName::from_utf8("ns1.example.com").unwrap(),
+                RrName::from_utf8("hostmaster.example.com").unwrap(),
+                1, 3600, 600, 86400, ttl,
+            )),
+        )
+    }
+
+    // ── Test: negative responses use SOA TTL (RFC 2308) ─────────────────
+    #[test]
+    fn test_cache_ttl_uses_soa_on_negative() {
+        // NXDOMAIN with SOA (TTL=300) in authority
+        let mut msg = Message::response(1, OpCode::Query);
+        msg.metadata.response_code = ResponseCode::NXDomain;
+        msg.add_authority(soa_record(300));
+        assert_eq!(cache_ttl_secs(&msg), 300, "NXDOMAIN should use SOA TTL");
+
+        // NODATA (NoError, no answers) with SOA (TTL=120)
+        let mut nodata = Message::response(1, OpCode::Query);
+        nodata.metadata.response_code = ResponseCode::NoError;
+        nodata.add_authority(soa_record(120));
+        assert_eq!(cache_ttl_secs(&nodata), 120, "NODATA should use SOA TTL");
+    }
+
+    // ── Test: SERVFAIL must not be cached ────────────────────────────────
+    #[test]
+    fn test_cache_ttl_servfail_not_cached() {
+        let mut msg = Message::response(1, OpCode::Query);
+        msg.metadata.response_code = ResponseCode::ServFail;
+        assert_eq!(cache_ttl_secs(&msg), 0, "SERVFAIL must not be cached");
+    }
+
+    // ── Test: positive answers use min answer TTL ────────────────────────
+    #[test]
+    fn test_cache_ttl_positive_uses_min_answer() {
+        use hickory_proto::rr::RData;
+        let mut msg = Message::response(1, OpCode::Query);
+        msg.add_answer(hickory_proto::rr::Record::from_rdata(
+            Name::from_utf8("example.com").unwrap(),
+            300,
+            RData::A(hickory_proto::rr::rdata::A::new(1, 2, 3, 4)),
+        ));
+        msg.add_answer(hickory_proto::rr::Record::from_rdata(
+            Name::from_utf8("example.com").unwrap(),
+            120,
+            RData::A(hickory_proto::rr::rdata::A::new(5, 6, 7, 8)),
+        ));
+        assert_eq!(cache_ttl_secs(&msg), 120, "min answer TTL wins");
+    }
+
+    // ── Test: empty response without SOA → no cache ─────────────────────
+    #[test]
+    fn test_cache_ttl_negative_without_soa_not_cached() {
+        let mut msg = Message::response(1, OpCode::Query);
+        msg.metadata.response_code = ResponseCode::NXDomain;
+        assert_eq!(cache_ttl_secs(&msg), 0, "negative response without SOA must not be cached");
+    }
+
+    // ── Test: TTL decrement applies to answers, authorities, additionals ─
+    #[test]
+    fn test_decrement_ttls_all_sections() {
+        use hickory_proto::rr::RData;
+        let mut msg = Message::response(1, OpCode::Query);
+        msg.add_answer(hickory_proto::rr::Record::from_rdata(
+            Name::from_utf8("a.example.com").unwrap(), 100,
+            RData::A(hickory_proto::rr::rdata::A::new(1, 2, 3, 4)),
+        ));
+        msg.add_authority(hickory_proto::rr::Record::from_rdata(
+            Name::from_utf8("ns.example.com").unwrap(), 200,
+            RData::A(hickory_proto::rr::rdata::A::new(9, 9, 9, 9)),
+        ));
+        msg.add_additional(hickory_proto::rr::Record::from_rdata(
+            Name::from_utf8("ns.example.com").unwrap(), 300,
+            RData::A(hickory_proto::rr::rdata::A::new(5, 6, 7, 8)),
+        ));
+
+        decrement_ttls(&mut msg, 30);
+        assert_eq!(msg.answers[0].ttl, 70, "answer TTL decremented");
+        assert_eq!(msg.authorities[0].ttl, 170, "authority TTL decremented");
+        assert_eq!(msg.additionals[0].ttl, 270, "additional TTL decremented");
+
+        // Saturating: TTL smaller than elapsed → 0
+        decrement_ttls(&mut msg, 1000);
+        assert_eq!(msg.answers[0].ttl, 0);
+        assert_eq!(msg.authorities[0].ttl, 0);
+        assert_eq!(msg.additionals[0].ttl, 0);
     }
 
     // ── Test 26: Null + A → 0.0.0.0, NoError ────────────────────────────
