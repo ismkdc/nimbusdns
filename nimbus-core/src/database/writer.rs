@@ -194,4 +194,40 @@ mod tests {
         assert!(batch.is_empty());
         assert_eq!(db.get_stats().unwrap().total, 0);
     }
+
+    #[test]
+    fn test_store_full_queue_returns_error() {
+        // Channel capacity 1; filling it must make the next store() fail
+        // with the queue-full error (backpressure), not block or panic.
+        let (tx, mut rx) = mpsc::channel::<StoredQuery>(1);
+        let writer = DbWriter { sender: tx };
+
+        writer.store(stored(1)).expect("first send fits in capacity");
+        // Channel now full (receiver not drained)
+        let err = writer.store(stored(2)).unwrap_err();
+        assert!(
+            err.to_string().contains("queue full"),
+            "expected queue-full error, got: {}",
+            err
+        );
+
+        // Draining the receiver frees capacity
+        rx.try_recv().expect("first query should be receivable");
+        writer.store(stored(3)).expect("capacity freed after drain");
+    }
+
+    #[test]
+    fn test_store_closed_channel_returns_error() {
+        // Dropping the receiver (writer task stopped) must make store()
+        // fail with an error, not panic.
+        let (tx, rx) = mpsc::channel::<StoredQuery>(8);
+        drop(rx);
+        let writer = DbWriter { sender: tx };
+        let err = writer.store(stored(1)).unwrap_err();
+        assert!(
+            err.to_string().contains("stopped"),
+            "expected writer-stopped error, got: {}",
+            err
+        );
+    }
 }

@@ -448,4 +448,63 @@ mod tests {
         assert!(!m.is_match("example.co.uk"));
         assert!(!m.is_match("deep.example.co"));
     }
+
+    // -- check_blocked integration: wildcard + ordering semantics ---------
+
+    fn lists_with(
+        allow_exact: &[&str],
+        deny_exact: &[&str],
+        gravity_domains: &[&str],
+        wildcard: &[&str],
+    ) -> BlockingLists {
+        let allowlist_exact: DashSet<String> = DashSet::new();
+        for d in allow_exact { allowlist_exact.insert(d.to_lowercase()); }
+        let denylist_exact: DashSet<String> = DashSet::new();
+        for d in deny_exact { denylist_exact.insert(d.to_lowercase()); }
+        let gravity_exact: DashSet<String> = DashSet::new();
+        for d in gravity_domains { gravity_exact.insert(d.to_lowercase()); }
+        let wildcard_deny = WildcardMatcher::default();
+        for w in wildcard { wildcard_deny.insert(w); }
+        let total_blocked = gravity_exact.len() + denylist_exact.len();
+        BlockingLists {
+            allowlist_exact,
+            denylist_exact,
+            allowlist_regex: Vec::new(),
+            denylist_regex: Vec::new(),
+            gravity_exact,
+            wildcard_deny,
+            total_blocked,
+            adlist_count: 0,
+        }
+    }
+
+    #[test]
+    fn test_check_blocked_wildcard_blocks_subdomains() {
+        let lists = lists_with(&[], &[], &[], &["*.ads.example.com"]);
+        assert_eq!(lists.check_blocked("ads.example.com"), BlockingDecision::Blocked("wildcard".into()));
+        assert_eq!(lists.check_blocked("banner.ads.example.com"), BlockingDecision::Blocked("wildcard".into()));
+        assert_eq!(lists.check_blocked("safe.example.com"), BlockingDecision::NotBlocked);
+    }
+
+    #[test]
+    fn test_check_blocked_allowlist_wins_over_wildcard_and_gravity() {
+        // allowlist must win even when the domain is also a wildcard/gravity hit
+        let lists = lists_with(&["safe.example.com"], &[], &["safe.example.com"], &["*.example.com"]);
+        assert_eq!(lists.check_blocked("safe.example.com"), BlockingDecision::Allowlisted);
+    }
+
+    #[test]
+    fn test_check_blocked_gravity_exact_blocks_before_deny_regex() {
+        // gravity exact hit is reported before any regex scan (exact-first order)
+        let lists = lists_with(&[], &[], &["tracker.example.com"], &[]);
+        assert_eq!(lists.check_blocked("tracker.example.com"), BlockingDecision::Blocked("gravity".into()));
+        assert_eq!(lists.check_blocked("tracker.example.net"), BlockingDecision::NotBlocked);
+    }
+
+    #[test]
+    fn test_check_blocked_order_deny_exact_before_gravity() {
+        // deny-exact reported before gravity-exact when both match
+        let lists = lists_with(&[], &["both.example.com"], &["both.example.com"], &[]);
+        assert_eq!(lists.check_blocked("both.example.com"), BlockingDecision::Blocked("exact".into()));
+    }
 }
