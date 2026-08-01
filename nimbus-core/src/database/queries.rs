@@ -90,14 +90,16 @@ impl QueryDb {
         }
         self.conn.with_conn(|conn| {
             let txn = conn.transaction()?;
-            for query in queries {
-                txn.execute(
+            {
+                let mut stmt = txn.prepare(
                     "INSERT OR IGNORE INTO queries (timestamp, dbl_domain, dbl_client, dbl_forward,
                      dbl_type, dbl_status, dbl_reply_time, dbl_reply_type, dbl_flags,
                      dbl_interface, dbl_elapsed_ms, dbl_adlist_id, dbl_cache_id,
                      dbl_regex_id, dbl_upstream_id)
-                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
-                    rusqlite::params![
+                     VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)"
+                )?;
+                for query in queries {
+                    stmt.execute(rusqlite::params![
                         query.timestamp,
                         query.domain,
                         query.client,
@@ -113,8 +115,8 @@ impl QueryDb {
                         query.cache_id,
                         query.regex_id,
                         query.upstream_id,
-                    ],
-                )?;
+                    ])?;
+                }
             }
             txn.commit()?;
             Ok(())
