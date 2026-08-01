@@ -45,11 +45,18 @@ pub struct WildcardMatcher {
 }
 
 impl WildcardMatcher {
-    /// Add a `*.suffix` pattern (e.g. `*.example.com`).
+    /// Add a `*.suffix` or `*suffix` pattern (e.g. `*.example.com`, `*example.com`).
     /// The suffix itself also matches (apex), matching the previous regex behavior.
     pub fn insert(&self, pattern: &str) {
-        let suffix = pattern.trim().strip_prefix("*.").unwrap_or(pattern.trim());
-        let mut labels: Vec<&str> = suffix.split('.').collect();
+        let trimmed = pattern.trim();
+        let suffix = trimmed
+            .strip_prefix("*.")
+            .or_else(|| trimmed.strip_prefix('*'))
+            .unwrap_or(trimmed);
+        let mut labels: Vec<String> = suffix
+            .split('.')
+            .map(|label| label.to_lowercase())
+            .collect();
         labels.reverse();
         self.suffixes.insert(labels.join("."));
     }
@@ -401,5 +408,22 @@ mod tests {
         assert!(m.is_match("deep.ads.cn"));
         assert!(!m.is_match("tracker.io.evil.com"));
         assert!(!m.is_match("safe.io"));
+    }
+
+    #[test]
+    fn test_wildcard_matcher_bare_star() {
+        let m = WildcardMatcher::default();
+        m.insert("*foo.com");
+        assert!(m.is_match("foo.com"), "apex should match *foo.com");
+        assert!(m.is_match("sub.foo.com"), "subdomain should match *foo.com");
+        assert!(!m.is_match("xfoo.com"), "should NOT match *foo.com");
+        assert!(!m.is_match("other.foo.com.evil.com"), "should NOT match *foo.com");
+    }
+
+    #[test]
+    fn test_wildcard_matcher_mixed_case() {
+        let m = WildcardMatcher::default();
+        m.insert("*.Example.COM");
+        assert!(m.is_match("sub.example.com"), "mixed-case pattern should match lowercased query");
     }
 }
