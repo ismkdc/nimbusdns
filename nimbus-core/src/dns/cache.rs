@@ -104,39 +104,32 @@ impl DnsCache {
         Some(entry.value().clone())
     }
 
-    /// Insert a new entry, evicting expired + oldest entries if over capacity
+    /// Insert a new entry, evicting at most one entry (O(1)) if over capacity.
     pub fn insert(&self, key: CacheKey, response: CachedResponse) {
         // Remove old entry if exists (O(1) in DashMap)
         self.entries.remove(&key);
 
-        // Evict expired entries and oldest if still over capacity
+        // Probabilistic eviction: sample up to 8 entries, evict oldest sampled.
         if self.entries.len() >= self.max_entries {
-            // Phase 1: remove all expired entries (O(n), rare)
-            let expired: Vec<CacheKey> = self.entries.iter()
-                .filter(|e| e.value().is_expired())
-                .map(|e| e.key().clone())
-                .collect();
-            for k in expired {
-                self.entries.remove(&k);
-            }
-        }
-
-        // Phase 2: if still over capacity, remove oldest by cached_at
-        if self.entries.len() >= self.max_entries {
-            let mut oldest: Option<(CacheKey, Instant)> = None;
-            for e in self.entries.iter() {
-                let ca = e.value().cached_at;
-                if oldest.as_ref().is_none_or(|(_, oa)| ca < *oa) {
-                    oldest = Some((e.key().clone(), ca));
-                }
-            }
-            if let Some((k, _)) = oldest {
-                self.entries.remove(&k);
-                trace!("Evicted oldest cache entry");
-            }
+            self.evict_one();
         }
 
         self.entries.insert(key, response);
+    }
+
+    /// Evict one entry by sampling up to 8 candidates and dropping the oldest.
+    /// This is O(1) — a constant number of iterations — instead of the previous
+    /// full-map scan on every insert. Expired entries are removed lazily by `get`.
+    fn evict_one(&self) {
+        let candidates: Vec<(CacheKey, std::time::Instant)> = self.entries
+            .iter()
+            .take(8)
+            .map(|e| (e.key().clone(), e.value().cached_at))
+            .collect();
+        if let Some((k, _)) = candidates.into_iter().min_by_key(|(_, t)| *t) {
+            self.entries.remove(&k);
+            trace!("Evicted cache entry (probabilistic)");
+        }
     }
 
     pub fn remove_domain(&self, domain: &str) -> usize {
@@ -333,5 +326,19 @@ mod tests {
         assert_eq!(cache.len(), 1);
         let got = cache.get(&key).unwrap();
         assert_eq!(&*got.data, b"second response");
+    }
+
+    // ── Test 21: probabilistic eviction never drops the newest ────────────
+    #[test]
+    fn test_eviction_keeps_newest() {
+        // With a small cache, inserting many entries must never drop the newest
+        let cache = DnsCache::new(4);
+        for i in 0..50 {
+            cache.insert(make_key(&format!("h{i}.com")), make_response(60));
+        }
+        // Newest entry must be present
+        assert!(cache.get(&make_key("h49.com")).is_some());
+        // Cache must never exceed capacity
+        assert!(cache.len() <= 4);
     }
 }
