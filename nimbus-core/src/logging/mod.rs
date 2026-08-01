@@ -25,7 +25,7 @@ pub fn init() -> anyhow::Result<()> {
         .unwrap_or_else(|_| {
             EnvFilter::builder()
                 .with_default_directive(Level::INFO.into())
-                .parse("nimbus=info,want=warn")
+                .parse("nimbus=info")
                 .expect("Invalid RUST_LOG filter")
         });
 
@@ -60,7 +60,7 @@ fn log_startup_banner() {
 
 /// Log levels that map to original log level semantics
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum FtlLogLevel {
+pub enum NimbusLogLevel {
     Debug,
     Info,
     Warn,
@@ -68,7 +68,7 @@ pub enum FtlLogLevel {
     Critical,
 }
 
-impl FtlLogLevel {
+impl NimbusLogLevel {
     pub fn as_str(&self) -> &'static str {
         match self {
             Self::Debug => "DEBUG",
