@@ -157,7 +157,7 @@ pub async fn serve(
 
         .layer(AuthLayer::new(internal_state.clone()))
         .layer(tower_http::cors::CorsLayer::permissive())
-        .with_state(internal_state);
+        .with_state(internal_state.clone());
 
     // Bind and serve - use configured port, listen on all interfaces
     let bind_port = state.config.read().webserver.http_port();
@@ -167,8 +167,8 @@ pub async fn serve(
 
     // Clone shutdown receiver for the cleanup task
     let cleanup_shutdown = shutdown_rx.clone();
-    // Clone state for the cleanup task (Arc clone)
-    let cleanup_state = state.clone();
+    // Clone internal state for the cleanup task (Arc clone — has session_cache)
+    let cleanup_state = internal_state.clone();
 
     tokio::spawn(async move {
         axum::serve(listener, app)
@@ -188,21 +188,23 @@ pub async fn serve(
         loop {
             tokio::select! {
                 _ = interval.tick() => {
-                    // Clean expired sessions
-                    if let Err(e) = cleanup_state.database.nimbus_db.cleanup_expired_sessions() {
+                    // Clean expired sessions (DB)
+                    if let Err(e) = cleanup_state.app_state.database.nimbus_db.cleanup_expired_sessions() {
                         tracing::warn!("Session cleanup error: {}", e);
                     }
+                    // Clean expired sessions from the in-memory cache too
+                    cleanup_state.session_cache.remove_expired(chrono::Utc::now().timestamp());
                     // Delete old queries based on retention config (only if logging is enabled)
-                    let cfg = cleanup_state.config.read();
+                    let cfg = cleanup_state.app_state.config.read();
                     if cfg.dns.query_log {
                         let retention = cfg.dns.query_retention;
                         if retention > 0
-                            && let Err(e) = cleanup_state.database.nimbus_db.delete_old_queries(retention as i64) {
+                            && let Err(e) = cleanup_state.app_state.database.nimbus_db.delete_old_queries(retention as i64) {
                                 tracing::warn!("Query retention cleanup error: {}", e);
                             }
                     }
                     // Clean stale overTime client histories
-                    cleanup_state.over_time.cleanup_stale_clients();
+                    cleanup_state.app_state.over_time.cleanup_stale_clients();
                 }
                 _ = rx.changed() => {
                     tracing::info!("Cleanup task shutting down...");
@@ -864,8 +866,8 @@ async fn delete_session(
     let sid = auth::extract_sid_from_headers(req.headers())
         .ok_or(auth::AuthError::Unauthorized)?;
 
-    // Validate the session (also touches last_used_at)
-    auth::validate_session(&state.app_state.database.nimbus_db, &sid)?;
+    // Validate the session via the cache (also removes from cache on logout)
+    state.session_cache.validate(&state.app_state.database.nimbus_db, &sid)?;
 
     // Delete the session
     state.app_state.database.nimbus_db.delete_session(&sid)?;

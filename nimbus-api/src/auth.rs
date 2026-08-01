@@ -224,6 +224,13 @@ impl SessionCache {
             s.expires_at = expires_at;
         }
     }
+
+    /// Remove all expired sessions from the cache. Called by the hourly
+    /// cleanup task alongside `cleanup_expired_sessions` so the cache cannot
+    /// accumulate stale entries for sessions already deleted from the DB.
+    pub fn remove_expired(&self, now: i64) {
+        self.sessions.retain(|_, s| s.expires_at >= now);
+    }
 }
 
 /// Extract a SID from request headers.
@@ -349,6 +356,41 @@ mod tests {
         assert!(cache.validate(&db, "old").is_err());
         // Cache must not hold the expired entry
         assert!(cache.validate(&db, "old").is_err());
+    }
+
+    #[test]
+    fn test_session_cache_remove_expired() {
+        let db = test_db();
+        let cache = SessionCache::new();
+        // Two valid + one expired session in the cache
+        let s1 = seed_session(&db, "a");
+        let s2 = seed_session(&db, "b");
+        cache.insert(&s1);
+        cache.insert(&s2);
+        db.create_session("gone", chrono::Utc::now().timestamp() - 10, None, None).unwrap();
+        let expired = db.get_session("gone").unwrap().unwrap();
+        cache.insert(&expired);
+
+        let now = chrono::Utc::now().timestamp();
+        cache.remove_expired(now);
+
+        // Valid sessions still served from cache
+        assert!(cache.validate(&db, "a").is_ok());
+        assert!(cache.validate(&db, "b").is_ok());
+        // Expired session no longer in cache
+        assert!(cache.validate(&db, "gone").is_err());
+    }
+
+    #[test]
+    fn test_session_cache_warm_hit_served_from_memory() {
+        let db = test_db();
+        let cache = SessionCache::new();
+        // Load session into cache
+        let s = seed_session(&db, "warm");
+        cache.insert(&s);
+        // Remove it from the DB — a warm cache must still serve it from memory
+        db.delete_session("warm").unwrap();
+        assert!(cache.validate(&db, "warm").is_ok());
     }
 }
 

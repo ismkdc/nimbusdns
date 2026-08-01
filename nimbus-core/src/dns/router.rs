@@ -192,12 +192,15 @@ impl QueryRouter {
         if self.state.config.read().dns.query_log {
             if let Some(ref writer) = self.state.db_writer {
                 if let Err(e) = writer.store(stored) {
-                    debug!("Failed to queue query: {}", e);
+                    // Queue full (backpressure) or writer stopped — the query
+                    // log entry is dropped. Warn (not debug) so silent data
+                    // loss under high QPS is visible in logs.
+                    warn!("Failed to queue query (dropped from log): {}", e);
                 }
             } else {
                 // Fallback: direct DB write (blocking)
                 if let Err(e) = self.state.database.nimbus_db.store_query(stored) {
-                    debug!("Failed to store query: {}", e);
+                    warn!("Failed to store query: {}", e);
                 }
             }
         }

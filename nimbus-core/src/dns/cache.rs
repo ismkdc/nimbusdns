@@ -341,4 +341,17 @@ mod tests {
         // Cache must never exceed capacity
         assert!(cache.len() <= 4);
     }
+
+    // ── Test 22: eviction on a single-entry cache stays within capacity ──
+    #[test]
+    fn test_eviction_single_entry_capacity() {
+        // max_entries = 1: inserting N entries must never exceed 1
+        let cache = DnsCache::new(1);
+        for i in 0..10 {
+            cache.insert(make_key(&format!("s{i}.com")), make_response(60));
+        }
+        assert!(cache.len() <= 1);
+        // Newest entry must be present
+        assert!(cache.get(&make_key("s9.com")).is_some());
+    }
 }

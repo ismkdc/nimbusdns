@@ -426,4 +426,26 @@ mod tests {
         m.insert("*.Example.COM");
         assert!(m.is_match("sub.example.com"), "mixed-case pattern should match lowercased query");
     }
+
+    #[test]
+    fn test_wildcard_matcher_bare_star_mixed_case() {
+        // Cross-product: bare `*` + mixed case in one pattern
+        let m = WildcardMatcher::default();
+        m.insert("*Foo.COM");
+        assert!(m.is_match("foo.com"), "apex should match *Foo.COM");
+        assert!(m.is_match("sub.foo.com"), "subdomain should match *Foo.COM");
+        assert!(!m.is_match("xfoo.com"), "should NOT match *Foo.COM");
+        assert!(!m.is_match("foo.com.evil.net"), "should NOT match *Foo.COM");
+    }
+
+    #[test]
+    fn test_wildcard_matcher_multi_label_suffix() {
+        // Multi-label suffix: *.deep.example.co.uk
+        let m = WildcardMatcher::default();
+        m.insert("*.deep.example.co.uk");
+        assert!(m.is_match("a.deep.example.co.uk"));
+        assert!(m.is_match("deep.example.co.uk"), "apex of the pattern suffix matches");
+        assert!(!m.is_match("example.co.uk"));
+        assert!(!m.is_match("deep.example.co"));
+    }
 }

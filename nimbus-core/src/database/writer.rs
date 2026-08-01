@@ -68,9 +68,10 @@ pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) 
                             }
                         }
                         None => {
-                            // Channel closed, flush remaining and exit
+                            // Channel closed, flush remaining synchronously
+                            // (runtime may drop before spawn_blocking completes)
                             if !batch.is_empty() {
-                                flush_batch(db.clone(), &mut batch);
+                                flush_batch_sync(&db, &mut batch);
                             }
                             info!("Background database writer stopped");
                             break;
@@ -85,8 +86,10 @@ pub fn start(db: Arc<QueryDb>, shutdown_rx: tokio::sync::watch::Receiver<bool>) 
                 }
                 // Shutdown signal
                 _ = shutdown.changed() => {
+                    // Flush remaining synchronously — spawn_blocking is not
+                    // guaranteed to complete before runtime shutdown
                     if !batch.is_empty() {
-                        flush_batch(db.clone(), &mut batch);
+                        flush_batch_sync(&db, &mut batch);
                     }
                     info!("Background database writer shutting down");
                     break;
@@ -114,6 +117,22 @@ fn flush_batch(db: Arc<QueryDb>, batch: &mut Vec<StoredQuery>) {
             Err(e) => error!("Failed to write {} queries: {}", count, e),
         }
     });
+}
+
+/// Flush a batch synchronously. Used ONLY on shutdown paths, where the
+/// runtime is about to drop — a `spawn_blocking` task is not guaranteed to
+/// complete before the runtime shuts down, which would lose the final batch.
+/// Always clears the batch so a failed write cannot retry forever.
+fn flush_batch_sync(db: &QueryDb, batch: &mut Vec<StoredQuery>) {
+    if batch.is_empty() {
+        return;
+    }
+    let count = batch.len();
+    match db.store_query_batch(batch) {
+        Ok(()) => debug!("Wrote {} queries to database", count),
+        Err(e) => error!("Failed to write {} queries: {}", count, e),
+    }
+    batch.clear();
 }
 
 #[cfg(test)]
@@ -150,5 +169,29 @@ mod tests {
         db.store_query_batch(&queries).unwrap();
         let stats = db.get_stats().unwrap();
         assert_eq!(stats.total, 2);
+    }
+
+    #[test]
+    fn test_flush_batch_sync_writes_and_clears() {
+        let db = Arc::new(QueryDb::open(
+            std::path::Path::new(":memory:"), 1000,
+        ).unwrap());
+        let mut batch = vec![stored(1), stored(2)];
+        flush_batch_sync(&db, &mut batch);
+        // Batch must be cleared even on success
+        assert!(batch.is_empty());
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.total, 2);
+    }
+
+    #[test]
+    fn test_flush_batch_sync_empty_is_noop() {
+        let db = Arc::new(QueryDb::open(
+            std::path::Path::new(":memory:"), 1000,
+        ).unwrap());
+        let mut batch: Vec<StoredQuery> = Vec::new();
+        flush_batch_sync(&db, &mut batch);
+        assert!(batch.is_empty());
+        assert_eq!(db.get_stats().unwrap().total, 0);
     }
 }
