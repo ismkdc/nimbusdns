@@ -34,6 +34,12 @@ pub struct TimeSlot {
 }
 
 
+/// Shared slot state: circular buffer plus last-written index, under one lock.
+struct SlotState {
+    slots: Vec<TimeSlot>,
+    last_slot_idx: usize,
+}
+
 /// Per-client overTime tracking
 #[derive(Debug, Clone)]
 struct ClientHistory {
@@ -56,10 +62,8 @@ pub struct OverTimeSnapshot {
 }
 
 pub struct OverTime {
-    /// Circular buffer of time slots (indexed by slot number % HISTORY_SLOTS)
-    slots: RwLock<Vec<TimeSlot>>,
-    /// The slot index that was last written to
-    last_slot_idx: RwLock<usize>,
+    /// Circular buffer + last index under a single lock
+    slot_state: RwLock<SlotState>,
     /// Per-client history
     client_histories: RwLock<HashMap<String, ClientHistory>>,
     /// Total queries counter (atomic for fast read)
@@ -76,8 +80,10 @@ impl OverTime {
     /// Create a new overTime engine
     pub fn new() -> Self {
         Self {
-            slots: RwLock::new(vec![TimeSlot::default(); HISTORY_SLOTS]),
-            last_slot_idx: RwLock::new(0),
+            slot_state: RwLock::new(SlotState {
+                slots: vec![TimeSlot::default(); HISTORY_SLOTS],
+                last_slot_idx: 0,
+            }),
             client_histories: RwLock::new(HashMap::new()),
             total_queries: AtomicI64::new(0),
             blocked_queries: AtomicI64::new(0),
@@ -112,10 +118,10 @@ impl OverTime {
             _ => {}
         }
 
-        // Update the main slot
+        // Update the main slot and last index under one lock
         {
-            let mut slots = self.slots.write();
-            let slot = &mut slots[idx];
+            let mut ss = self.slot_state.write();
+            let slot = &mut ss.slots[idx];
 
             // If this slot has a different timestamp, reset it
             if slot.timestamp != slot_ts {
@@ -132,12 +138,7 @@ impl OverTime {
                 QueryStatus::Forwarded => slot.forwarded += 1,
                 _ => {}
             }
-        }
-
-        // Track last slot index
-        {
-            let mut last_idx = self.last_slot_idx.write();
-            *last_idx = idx;
+            ss.last_slot_idx = idx;
         }
 
         // Update per-client history
@@ -179,7 +180,8 @@ impl OverTime {
         let current_slot = Self::slot_timestamp(now);
         let current_idx = Self::slot_index(now);
 
-        let slots = self.slots.read();
+        let ss = self.slot_state.read();
+        let slots = &ss.slots;
         let mut result = Vec::with_capacity(HISTORY_SLOTS);
 
         // Walk backwards from current slot to cover 24 hours
@@ -259,10 +261,11 @@ impl OverTime {
 
     /// Clear all data (for testing / flush)
     pub fn clear(&self) {
-        let mut slots = self.slots.write();
-        for slot in slots.iter_mut() {
+        let mut ss = self.slot_state.write();
+        for slot in ss.slots.iter_mut() {
             *slot = TimeSlot::default();
         }
+        ss.last_slot_idx = 0;
         self.client_histories.write().clear();
         self.total_queries.store(0, Ordering::Relaxed);
         self.blocked_queries.store(0, Ordering::Relaxed);
@@ -316,6 +319,19 @@ mod tests {
         assert_eq!(last_c1.total, 2);
         assert_eq!(last_c1.blocked, 1);
         assert_eq!(last_c1.forwarded, 1);
+    }
+
+    #[test]
+    fn test_record_many_clients() {
+        let ot = OverTime::new();
+        let now = chrono::Utc::now().timestamp();
+        for i in 0..100 {
+            ot.record_query(now, Some(&format!("10.0.0.{}", i % 10)), QueryStatus::Forwarded);
+        }
+        let history = ot.get_history();
+        let total: u64 = history.iter().map(|s| s.total).sum();
+        assert_eq!(total, 100);
+        assert_eq!(ot.total_queries(), 100);
     }
 
     #[test]
