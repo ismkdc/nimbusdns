@@ -14194,7 +14194,7 @@
 00-50-C2-CA-20/36   (hex)		The Logical Company
 00-50-C2-CA-30/36   (hex)		CT Company
 00-50-C2-CA-40/36   (hex)		Vox Technologies
-00-50-C2-CA-50/36   (hex)		Yokowo Co.,Ltd
+00-50-C2-CA-50/36   (hex)		Yokowo Co., Ltd.
 00-50-C2-CA-60/36   (hex)		Vidisys GmbH
 00-50-C2-CA-70/36   (hex)		Thermo Fisher Scientific
 00-50-C2-CA-80/36   (hex)		Systems With Intelligence Inc.
@@ -18144,9 +18144,15 @@
 08-25-32-30/28      (hex)		Becklar, LLC
 08-25-32-40/28      (hex)		Mega Phase
 08-25-32-50/28      (hex)		Max Co.,Ltd.
+08-25-32-60/28      (hex)		Digital Enhancement (Shenzhen) Co., Ltd.
 08-25-32-70/28      (hex)		Embedded Systems SIA
 08-25-32-80/28      (hex)		Shanghai Xinyuzhou Intelligent Technology Co., Ltd.
 08-25-32-90/28      (hex)		Shenzhen Yirun Technology Co., Ltd.
+08-25-32-A0/28      (hex)		Eveo sp. z o.o.
+08-25-32-B0/28      (hex)		Shenzhen Shuanghe Electric Co., Ltd.
+08-25-32-C0/28      (hex)		Cloud Technology Group, Llc
+08-25-32-D0/28      (hex)		Dream Solution Inc.
+08-25-32-E0/28      (hex)		Shenzhen Rubo Microelectronics Co.,Ltd
 08-25-73            (hex)		Apple, Inc.
 08-26-97            (hex)		Zyxel Communications Corporation
 08-26-AE-00/28      (hex)		Wuhan Tianyu Information Industry Co., Ltd.
@@ -18930,6 +18936,7 @@
 0C-9F-71            (hex)		Dolphin Electronics (DongGuan) Co., Ltd.
 0C-A0-6C            (hex)		Industrial Cyber Sensing Inc.
 0C-A1-38            (hex)		BLiNQ Networks Inc.
+0C-A2-80            (hex)		FN-LINK TECHNOLOGY Ltd.
 0C-A2-F4            (hex)		Chameleon Technology (UK) Limited
 0C-A3-B2            (hex)		Apple, Inc.
 0C-A4-02            (hex)		Alcatel-Lucent IPD
@@ -18967,6 +18974,7 @@
 0C-B9-12            (hex)		JM-DATA GmbH
 0C-B9-37            (hex)		Ubee Interactive Co., Limited
 0C-B9-83            (hex)		Honor Device Co., Ltd.
+0C-BC-35            (hex)		Netis Technology Co., Ltd.
 0C-BC-9F            (hex)		Apple, Inc.
 0C-BD-51            (hex)		TCT mobile ltd
 0C-BD-75            (hex)		Guangdong Oppo Mobile Telecommunications Corp.,Ltd
@@ -19231,6 +19239,7 @@
 10-1D-6E            (hex)		Hewlett Packard Enterprise
 10-1D-C0            (hex)		Samsung Electronics Co.,Ltd
 10-1E-DA            (hex)		Ingenico Terminals Sas
+10-1E-F4            (hex)		kiwimoore (Quzhou) Semiconductor Co.,Ltd
 10-1F-74            (hex)		Hewlett Packard
 10-20-BA            (hex)		Espressif Inc.
 10-22-79            (hex)		ZeroDesktop, Inc.
@@ -19283,6 +19292,7 @@
 10-39-4E            (hex)		Hisense broadband multimedia technology Co.,Ltd
 10-39-E9            (hex)		Juniper Networks
 10-3A-5D            (hex)		Emerson
+10-3B-54            (hex)		Huawei Technologies Co.,Ltd
 10-3B-59            (hex)		Samsung Electronics Co.,Ltd
 10-3C-59            (hex)		zte corporation
 10-3D-0A            (hex)		Hui Zhou Gaoshengda Technology Co.,LTD
@@ -19628,6 +19638,7 @@
 10-E7-C6            (hex)		Hewlett Packard
 10-E8-3A            (hex)		Fiberx Distribuidora De Produtos De Telecomunicacao Ltda
 10-E8-40            (hex)		Zowee Technology(Heyuan) Co., Ltd.
+10-E8-64            (hex)		Nucode Co., Ltd.
 10-E8-78            (hex)		Nokia
 10-E8-A7            (hex)		WNC Corporation
 10-E8-EE            (hex)		PhaseSpace
@@ -19667,6 +19678,7 @@
 14-01-52            (hex)		Samsung Electronics Co.,Ltd
 14-01-9C            (hex)		Ubyon Inc.
 14-02-EC            (hex)		Hewlett Packard Enterprise
+14-03-38            (hex)		Huawei Technologies Co.,Ltd
 14-04-67            (hex)		SNK Technologies Co.,Ltd.
 14-05-89            (hex)		Motorola Mobility LLC, a Lenovo Company
 14-06-4C            (hex)		Vogl Electronic GmbH
@@ -19883,8 +19895,10 @@
 14-75-5B            (hex)		Intel Corporate
 14-75-90            (hex)		Tp-Link Technologies Co.,Ltd.
 14-75-E5            (hex)		ELMAX Srl
+14-76-49            (hex)		Hewlett Packard Enterprise
 14-77-40            (hex)		Huawei Device Co., Ltd.
 14-78-0B            (hex)		Varex Imaging Deutschland AG
+14-78-30            (hex)		NVIDIA Corporation
 14-79-F3            (hex)		China Mobile Group Device Co.,Ltd.
 14-7A-E4            (hex)		Apple, Inc.
 14-7B-AC            (hex)		Nokia
@@ -20068,6 +20082,7 @@
 14-DD-E5            (hex)		Mpmkvvcl
 14-DE-39            (hex)		Huawei Device Co., Ltd.
 14-E0-1D            (hex)		Samsung Electronics Co.,Ltd
+14-E1-C9            (hex)		Silicon Laboratories
 14-E2-2A            (hex)		Cisco Systems, Inc
 14-E2-89            (hex)		Abietec Inc.
 14-E4-EC            (hex)		mLogic LLC
@@ -20550,6 +20565,7 @@
 18-D0-E1            (hex)		Mellanox Technologies, Inc.
 18-D2-25            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
 18-D2-76            (hex)		Huawei Technologies Co.,Ltd
+18-D3-CF            (hex)		Hewlett Packard Enterprise
 18-D5-B6            (hex)		SMG Holdings LLC
 18-D6-1C            (hex)		Shenzhen TINNO Mobile Technology Corp.
 18-D6-6A            (hex)		Inmarsat
@@ -20615,6 +20631,7 @@
 18-F1-D8            (hex)		Apple, Inc.
 18-F2-2C            (hex)		Tp-Link Technologies Co.,Ltd.
 18-F2-92            (hex)		Shannon Systems
+18-F3-C2            (hex)		Ebot Digital Technoloy Co., Limited
 18-F4-6A            (hex)		Hon Hai Precision Ind. Co.,Ltd.
 18-F4-6B            (hex)		Telenor Connexion AB
 18-F5-8B            (hex)		GlobalReach Technology EMEA Ltd
@@ -20718,12 +20735,14 @@
 1C-21-D1-D0/28      (hex)		Liscotech System Co., Ltd.
 1C-21-D1-E0/28      (hex)		p2-plus inc.
 1C-21-D1-F0/28      (hex)		Private
+1C-22-26            (hex)		Cisco Systems, Inc
 1C-22-85            (hex)		Serrature Meroni SpA
 1C-23-2C            (hex)		Samsung Electronics Co.,Ltd
 1C-23-4F            (hex)		EDMI Europe Ltd
 1C-23-A2            (hex)		FRITZ! Technology GmbH
 1C-24-CD            (hex)		Askey Computer Corp
 1C-24-EB            (hex)		Burlywood
+1C-25-75            (hex)		Xiaomi Communications Co Ltd
 1C-25-E1            (hex)		China Mobile IOT Company Limited
 1C-27-04            (hex)		zte corporation
 1C-27-DD            (hex)		Datang Gohighsec(zhejiang)Information Technology Co.,Ltd.
@@ -20918,6 +20937,7 @@
 1C-83-B0            (hex)		Linked IP GmbH
 1C-83-EC            (hex)		Ubee Interactive co, Limited.
 1C-84-64            (hex)		Formosa Wireless Communication Corp.
+1C-84-A6            (hex)		Cisco Systems, Inc
 1C-86-0B            (hex)		Guangdong Taiying Technology Co.,Ltd
 1C-86-82            (hex)		Apple, Inc.
 1C-86-9A            (hex)		Samsung Electronics Co.,Ltd
@@ -21342,6 +21362,7 @@
 20-2B-DA-C0/28      (hex)		EV4 Limited
 20-2B-DA-D0/28      (hex)		Transit Solutions, LLC.
 20-2B-DA-E0/28      (hex)		ZhuoYu Technology
+20-2C-05            (hex)		Zhejiang Dahua Zhilian Co.,Ltd
 20-2C-B7            (hex)		Kong Yue Electronics & Information Industry (Xinhui) Ltd.
 20-2D-07            (hex)		Samsung Electronics Co.,Ltd
 20-2D-23            (hex)		Collinear Networks Inc.
@@ -21841,9 +21862,11 @@
 24-46-C8            (hex)		Motorola Mobility LLC, a Lenovo Company
 24-46-E4            (hex)		Huawei Technologies Co.,Ltd
 24-47-0E            (hex)		PentronicAB
+24-47-50            (hex)		Sagemcom Broadband SAS
 24-48-45            (hex)		Hangzhou Hikvision Digital Technology Co.,Ltd.
 24-48-85            (hex)		Huawei Device Co., Ltd.
 24-49-7B            (hex)		Innovative Converged Devices Inc
+24-4A-F8            (hex)		Silicon Laboratories
 24-4B-03            (hex)		Samsung Electronics Co.,Ltd
 24-4B-81            (hex)		Samsung Electronics Co.,Ltd
 24-4B-F1            (hex)		Huawei Technologies Co.,Ltd
@@ -22528,6 +22551,7 @@
 28-AF-0A            (hex)		Sirius XM Radio Inc
 28-AF-21            (hex)		zte corporation
 28-AF-42            (hex)		Samsung Electronics Co.,Ltd
+28-AF-E5            (hex)		Shenzhen C-Data Technology Co., Ltd.
 28-AF-FD            (hex)		Cisco Systems, Inc
 28-B0-CC            (hex)		Xenya d.o.o.
 28-B1-33            (hex)		SHINEMAN(SHENZHEN) Tech. Cor., Ltd.
@@ -22577,6 +22601,7 @@
 28-BE-F3            (hex)		Fujian Star-Net Communication Co.,Ltd
 28-BF-89            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
 28-C0-1B            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
+28-C0-39            (hex)		Huawei Technologies Co.,Ltd
 28-C0-DA            (hex)		Juniper Networks
 28-C1-3C            (hex)		Hon Hai Precision Industry Co., Ltd.
 28-C1-A0            (hex)		Apple, Inc.
@@ -22699,6 +22724,7 @@
 28-F5-37-E0/28      (hex)		Performance Motion Devices
 28-F5-D1            (hex)		Commscope
 28-F6-06            (hex)		Syes srl
+28-F7-9A            (hex)		LX Semicon co.,Ltd.
 28-F7-D6            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
 28-F8-C6-00/28      (hex)		2iC-Care Ltd
 28-F8-C6-10/28      (hex)		Annapurna labs
@@ -23830,7 +23856,7 @@
 34-04-9E-10/28      (hex)		Connected IO
 34-04-9E-20/28      (hex)		EFD Induction
 34-04-9E-30/28      (hex)		Nanjing Mythware Information Technology Co., Ltd.
-34-04-9E-40/28      (hex)		Harbin Yantuo Science and Technology Development Co., Ltd
+34-04-9E-40/28      (hex)		Harbin Xilu Technology Co., Ltd
 34-04-9E-50/28      (hex)		Seeiner Technology Co.,LTD
 34-04-9E-60/28      (hex)		Life Interface Co., Ltd.
 34-04-9E-70/28      (hex)		Pebble Technology
@@ -23874,6 +23900,7 @@
 34-14-5F            (hex)		Samsung Electronics Co.,Ltd
 34-14-B5            (hex)		Texas Instruments
 34-15-13            (hex)		Texas Instruments
+34-15-30            (hex)		vivo Mobile Communication Co., Ltd.
 34-15-93            (hex)		Ruckus Wireless
 34-15-9E            (hex)		Apple, Inc.
 34-17-36            (hex)		Shenzhen iComm Semiconductor CO.,LTD
@@ -23980,6 +24007,7 @@
 34-46-63-E0/28      (hex)		Shenzhen ELECQ Technology Co.,Ltd
 34-46-6F            (hex)		HiTEM Engineering
 34-46-EC            (hex)		Huawei Device Co., Ltd.
+34-47-63            (hex)		Comtrend Corporation
 34-47-9A            (hex)		Guangdong Oppo Mobile Telecommunications Corp.,Ltd
 34-47-D4            (hex)		Chengdu Quanjing Intelligent Technology Co.,Ltd
 34-48-ED            (hex)		Dell Inc.
@@ -24010,7 +24038,7 @@
 34-55-06            (hex)		Guangdong Genius Technology Co., Ltd.
 34-55-94            (hex)		Fujian Star-Net Communication Co.,Ltd
 34-55-E5            (hex)		SJIT Co., Ltd.
-34-56-ED            (hex)		Goerdyna Group Co., Ltd
+34-56-ED            (hex)		Goerdyna Group Co., Ltd.
 34-56-FE            (hex)		Cisco Meraki
 34-57-60            (hex)		MitraStar Technology Corp.
 34-58-40            (hex)		Huawei Technologies Co.,Ltd
@@ -24114,6 +24142,7 @@
 34-8F-27            (hex)		Ruckus Wireless
 34-90-EA            (hex)		Murata Manufacturing Co., Ltd.
 34-91-6F            (hex)		UserGate Ltd.
+34-91-F0            (hex)		Dji Baiwang Technology Co Ltd
 34-92-C2            (hex)		Square Route Co., Ltd.
 34-93-42            (hex)		TTE Corporation
 34-93-6F            (hex)		Juniper Networks
@@ -24151,6 +24180,7 @@
 34-A7-BA            (hex)		Fischer International Systems Corporation
 34-A8-43            (hex)		KYOCERA Display Corporation
 34-A8-4E            (hex)		Cisco Systems, Inc
+34-A8-A0            (hex)		Huawei Technologies Co.,Ltd
 34-A8-DB            (hex)		SenArch ApS
 34-A8-EB            (hex)		Apple, Inc.
 34-AA-31            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
@@ -24160,6 +24190,7 @@
 34-AB-37            (hex)		Apple, Inc.
 34-AB-95            (hex)		Espressif Inc.
 34-AC-11            (hex)		China Mobile Group Device Co.,Ltd.
+34-AC-2F            (hex)		zte corporation
 34-AD-61            (hex)		Celestica Inc.
 34-AD-E4            (hex)		Shanghai Chint Power Systems Co., Ltd.
 34-AF-2C            (hex)		Nintendo Co., Ltd.
@@ -24355,6 +24386,7 @@
 34-EF-44            (hex)		2Wire Inc
 34-EF-8B            (hex)		NTT DOCOMO BUSINESS, Inc.
 34-EF-B6            (hex)		Edgecore Networks Corporation
+34-EF-D7            (hex)		Huawei Technologies Co.,Ltd
 34-F0-15            (hex)		Beijing Xiaomi Mobile Software Co., Ltd
 34-F0-43            (hex)		Samsung Electronics Co.,Ltd
 34-F0-84            (hex)		Samsung Electronics Co.,Ltd
@@ -24617,6 +24649,7 @@
 38-6F-6B            (hex)		Guangdong Oppo Mobile Telecommunications Corp.,Ltd
 38-6F-F4            (hex)		Amazon Technologies Inc.
 38-70-0C            (hex)		Commscope
+38-70-35            (hex)		Nintendo Co.,Ltd
 38-70-F2            (hex)		Huawei Technologies Co.,Ltd
 38-71-DE            (hex)		Apple, Inc.
 38-72-C0            (hex)		Comtrend Corporation
@@ -24700,6 +24733,7 @@
 38-9E-4C            (hex)		Hewlett Packard Enterprise
 38-9E-80            (hex)		zte corporation
 38-9F-5A            (hex)		C-Kur TV Inc.
+38-9F-77            (hex)		Suzhou Retronic Interconnect Technologies Co.,Ltd
 38-9F-83            (hex)		OTN Systems N.V.
 38-A0-67            (hex)		Nokia Solutions and Networks GmbH & Co. KG
 38-A2-8C            (hex)		Shenzhen Rf-Link Technology Co.,Ltd.
@@ -24828,6 +24862,7 @@
 38-C8-5C            (hex)		Cisco SPVTG
 38-C9-86            (hex)		Apple, Inc.
 38-C9-A9            (hex)		SMART High Reliability Solutions, Inc.
+38-C9-B1            (hex)		zte corporation
 38-CA-73            (hex)		Shenzhen MiaoMing Intelligent Technology Co.,Ltd
 38-CA-84            (hex)		HP Inc.
 38-CA-97            (hex)		Contour Design LLC
@@ -25774,6 +25809,7 @@
 40-9F-C7            (hex)		BAEKCHUN I&C Co., Ltd.
 40-A1-08            (hex)		Motorola (Wuhan) Mobility Technologies Communication Co., Ltd.
 40-A2-DB            (hex)		Amazon Technologies Inc.
+40-A2-E5            (hex)		3onedata Technology Co. Ltd.
 40-A3-6B-00/28      (hex)		Fin Robotics Inc
 40-A3-6B-10/28      (hex)		TW-TeamWare
 40-A3-6B-20/28      (hex)		TOPROOTTechnology Corp. Ltd.
@@ -26548,6 +26584,7 @@
 44-2A-FF            (hex)		E3 Technology, Inc.
 44-2B-03            (hex)		Cisco Systems, Inc
 44-2C-05            (hex)		AMPAK Technology, Inc.
+44-2D-49            (hex)		Extreme Networks, Inc.
 44-30-3F            (hex)		Huawei Technologies Co.,Ltd
 44-31-92            (hex)		Hewlett Packard
 44-32-1D            (hex)		Huawei Technologies Co.,Ltd
@@ -26880,6 +26917,7 @@
 44-D6-E1            (hex)		Snuza International Pty. Ltd.
 44-D7-7E            (hex)		Robert Bosch GmbH
 44-D7-91            (hex)		Huawei Technologies Co.,Ltd
+44-D7-B7            (hex)		eero inc.
 44-D8-32            (hex)		AzureWave Technology Inc.
 44-D8-78            (hex)		Hui Zhou Gaoshengda Technology Co.,LTD
 44-D8-84            (hex)		Apple, Inc.
@@ -26887,6 +26925,7 @@
 44-D9-E7            (hex)		Ubiquiti Inc
 44-DA-30            (hex)		Apple, Inc.
 44-DB-60            (hex)		Nanjing Baihezhengliu Technology Co., Ltd
+44-DB-BE            (hex)		Huawei Technologies Co.,Ltd
 44-DB-D2            (hex)		Yealink(Xiamen) Network Technology Co.,Ltd.
 44-DC-4E            (hex)		Itel Mobile Limited
 44-DC-91            (hex)		Planex Communications Inc.
@@ -27040,6 +27079,7 @@
 48-2E-72            (hex)		Cisco Systems, Inc
 48-2F-6B            (hex)		Hewlett Packard Enterprise
 48-2F-D7            (hex)		Huawei Technologies Co.,Ltd
+48-31-06            (hex)		NVIDIA Corporation
 48-31-33            (hex)		Robert Bosch Elektronika Kft.
 48-31-77            (hex)		Nintendo Co.,Ltd
 48-31-B7            (hex)		Espressif Inc.
@@ -27277,6 +27317,7 @@
 48-AA-BB            (hex)		Sagemcom Broadband SAS
 48-AD-08            (hex)		Huawei Technologies Co.,Ltd
 48-AD-9A            (hex)		Intel Corporate
+48-AF-F3            (hex)		Espressif Inc.
 48-B0-2D            (hex)		NVIDIA Corporation
 48-B2-53            (hex)		Marketaxess Corporation
 48-B2-5D            (hex)		Huawei Technologies Co.,Ltd
@@ -27467,7 +27508,7 @@
 4A-C0-3F            (hex)		Wuhan Hikstorage Technology Co.,Ltd
 4A-CA-3E            (hex)		Zeus
 4A-DA-10            (hex)		Emotiva Audio Corp
-4A-E0-3F            (hex)		Chengdu Superxon communication Technology Co. Ltd.
+4A-E0-3F            (hex)		Chengdu Superxon Communication Technology Co., Ltd.
 4A-E5-68            (hex)		leapio
 4A-ED-1D            (hex)		Astera Labs Inc
 4A-F5-7D            (hex)		ASAM e.V.
@@ -27478,6 +27519,7 @@
 4C-02-2E            (hex)		Cmr Korea Co., Ltd
 4C-02-89            (hex)		Lex Computech Co., Ltd
 4C-03-4F            (hex)		Intel Corporate
+4C-05-73            (hex)		Moka Global Limited
 4C-06-17            (hex)		Taicang T&W Electronics
 4C-06-8A            (hex)		Basler Electric Company
 4C-06-B7            (hex)		ProDVX Europe B.V.
@@ -27737,6 +27779,7 @@
 4C-82-A9            (hex)		Cloud Network Technology Singapore Pte. Ltd.
 4C-82-CF            (hex)		Dish Technologies Corp
 4C-83-DE            (hex)		Cisco SPVTG
+4C-83-FE            (hex)		Shenzhen Mercury Communication Technologies Co.,Ltd.
 4C-85-8A            (hex)		Buffalo.Inc
 4C-87-5D            (hex)		Bose Corporation
 4C-88-9E            (hex)		Huawei Device Co., Ltd.
@@ -28048,12 +28091,14 @@
 50-0B-91-C0/28      (hex)		Diamond Traffic Products, Inc
 50-0B-91-D0/28      (hex)		Shenzhen Lucky Sonics Co.,Ltd
 50-0B-91-E0/28      (hex)		Shenzhen zhong ju Fiber optical Co.Ltd
+50-0E-5B            (hex)		Quectel Wireless Solutions Co.,Ltd.
 50-0E-6D            (hex)		TrafficCast International
 50-0F-59            (hex)		STMicrolectronics International NV
 50-0F-80            (hex)		Cisco Systems, Inc
 50-0F-C6            (hex)		solum
 50-0F-F5            (hex)		Tenda Technology Co.,Ltd.Dongguan branch
 50-11-EB            (hex)		SilverNet Ltd
+50-12-5C            (hex)		Sony Corporation
 50-13-1D            (hex)		Motorola Mobility LLC, a Lenovo Company
 50-13-65            (hex)		Vola Networks Inc.
 50-13-95            (hex)		Sichuan AI-Link Technology Co., Ltd.
@@ -28299,6 +28344,7 @@
 50-7B-91            (hex)		Sigmastar Technology Ltd.
 50-7B-9D            (hex)		LCFC(Hefei) Electronics Technology co., ltd
 50-7C-6F            (hex)		Intel Corporate
+50-7C-90            (hex)		Huami (Shenzhen) Information Technology Co., Ltd
 50-7D-02            (hex)		Biodit
 50-7E-5D            (hex)		Arcadyan Corporation
 50-80-4A            (hex)		Quectel Wireless Solutions Co.,Ltd.
@@ -28451,6 +28497,7 @@
 50-CF-56            (hex)		China Mobile Group Device Co.,Ltd.
 50-D0-65            (hex)		ESYLUX GmbH
 50-D0-6D            (hex)		Bird Buddy
+50-D1-D7            (hex)		ALL Winner (Hong Kong) Limited
 50-D2-13            (hex)		CviLux Corporation
 50-D2-74            (hex)		Steffes Corporation
 50-D2-F5            (hex)		Beijing Xiaomi Mobile Software Co., Ltd
@@ -28534,6 +28581,7 @@
 50-F7-22            (hex)		Cisco Systems, Inc
 50-F7-ED            (hex)		Huawei Device Co., Ltd.
 50-F8-A5            (hex)		eWBM Co., Ltd.
+50-F8-AD            (hex)		Nanjing Qinheng Microelectronics Co., Ltd.
 50-F9-08            (hex)		Wizardlab Co., Ltd.
 50-F9-58            (hex)		Huawei Device Co., Ltd.
 50-FA-84            (hex)		Tp-Link Technologies Co.,Ltd.
@@ -28587,6 +28635,7 @@
 54-04-A6            (hex)		ASUSTek COMPUTER INC.
 54-05-36            (hex)		Vivago Oy
 54-05-5F            (hex)		Alcatel Lucent
+54-05-83            (hex)		Itel Mobile Limited
 54-05-93            (hex)		WOORI ELEC Co.,Ltd
 54-05-DB            (hex)		LCFC(Hefei) Electronics Technology co., ltd
 54-06-8B            (hex)		Ningbo Deli Kebei Technology Co.LTD
@@ -28885,6 +28934,7 @@
 54-A2-45            (hex)		Digisol Systems Limited
 54-A2-74            (hex)		Cisco Systems, Inc
 54-A3-1B            (hex)		Shenzhen Linkworld Technology Co,.LTD
+54-A3-56            (hex)		Annapurna labs
 54-A3-FA            (hex)		BQT Solutions (Australia)Pty Ltd
 54-A4-93-00/28      (hex)		Intelligent Surveillance Corp
 54-A4-93-10/28      (hex)		ShenZhen Smart&Aspiration Co.,LTD
@@ -29452,6 +29502,7 @@
 58-D3-12            (hex)		zte corporation
 58-D3-49            (hex)		Apple, Inc.
 58-D3-91            (hex)		Quectel Wireless Solutions Co.,Ltd.
+58-D4-69            (hex)		Arista Networks
 58-D5-0A            (hex)		Murata Manufacturing Co., Ltd.
 58-D5-33            (hex)		Huaqin Technology Co.,Ltd
 58-D5-6E            (hex)		D-Link International
@@ -30164,6 +30215,7 @@
 60-1D-9D            (hex)		Sichuan AI-Link Technology Co., Ltd.
 60-1E-02            (hex)		EltexAlatau
 60-1E-98            (hex)		Axevast Technology
+60-1F-56            (hex)		Huawei Technologies Co.,Ltd
 60-21-01            (hex)		Guangdong Oppo Mobile Telecommunications Corp.,Ltd
 60-21-03            (hex)		I4Vine, Inc
 60-21-C0            (hex)		Murata Manufacturing Co., Ltd.
@@ -30267,6 +30319,7 @@
 60-60-1F            (hex)		Sz Dji Technology Co.,Ltd
 60-61-34            (hex)		Arcade Communications Ltd.
 60-61-DF            (hex)		Z-meta Research LLC
+60-62-9A            (hex)		Juniper Networks
 60-63-4C            (hex)		D-Link International
 60-63-F9            (hex)		Ciholas, Inc.
 60-63-FD            (hex)		Transcend Communication Beijing Co.,Ltd.
@@ -30545,6 +30598,7 @@
 60-E9-AA            (hex)		Cloud Network Technology Singapore Pte. Ltd.
 60-EB-5A            (hex)		Asterfusion Data Technologies Co.,Ltd
 60-EB-69            (hex)		Quanta Computer Inc.
+60-EB-B4            (hex)		Guangdong Genius Technology Co., Ltd.
 60-EE-5C            (hex)		Shenzhen Fast Technologies Co.,Ltd
 60-EF-AB            (hex)		Silicon Laboratories
 60-EF-C6            (hex)		Shenzhen Chima Technologies Co Limited
@@ -30907,6 +30961,7 @@
 64-B0-E8            (hex)		Huawei Device Co., Ltd.
 64-B2-1D            (hex)		Chengdu Phycom Tech Co., Ltd.
 64-B2-B4            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
+64-B2-E4            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
 64-B3-10            (hex)		Samsung Electronics Co.,Ltd
 64-B3-70            (hex)		PowerComm Solutions LLC
 64-B3-79            (hex)		Jiangsu Viscore Technologies Co.,Ltd
@@ -31206,6 +31261,7 @@
 68-55-D4            (hex)		Seiko Epson Corporation
 68-57-2D            (hex)		Tuya Smart Inc.
 68-58-11            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
+68-58-92            (hex)		NXP Semiconductors Taiwan Ltd.
 68-58-A0            (hex)		Honor Device Co., Ltd.
 68-58-C5            (hex)		ZF TRW Automotive
 68-59-32            (hex)		Sunitec Enterprise Co.,Ltd
@@ -31297,6 +31353,7 @@
 68-8A-F0            (hex)		zte corporation
 68-8B-0F            (hex)		China Mobile IOT Company Limited
 68-8B-F4            (hex)		Arista Network, Inc.
+68-8D-2B            (hex)		Gsd Viet Nam Technology Company Limited
 68-8D-B6            (hex)		Aetek Inc.
 68-8F-2E            (hex)		Hitron Technologies. Inc
 68-8F-84            (hex)		Huawei Technologies Co.,Ltd
@@ -31879,6 +31936,7 @@
 6C-A1-00            (hex)		Intel Corporate
 6C-A3-1E            (hex)		Itel Mobile Limited
 6C-A3-67            (hex)		Avlinkpro
+6C-A3-D3            (hex)		Peplink International Ltd.
 6C-A4-01            (hex)		essensys plc
 6C-A4-D1            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
 6C-A6-04            (hex)		Commscope
@@ -31948,6 +32006,7 @@
 6C-C7-EC            (hex)		Samsung Electro-Mechanics(Thailand)
 6C-C8-40            (hex)		Espressif Inc.
 6C-CA-08            (hex)		Commscope
+6C-CB-7F            (hex)		GD Midea Air-Conditioning Equipment Co.,Ltd.
 6C-CD-D6            (hex)		Netgear
 6C-CE-44            (hex)		1More
 6C-CF-39            (hex)		Shanghai StarFive Semiconductor Co., Ltd.
@@ -32182,6 +32241,7 @@
 70-4C-A2            (hex)		Apple, Inc.
 70-4C-A5            (hex)		Fortinet, Inc.
 70-4C-B6            (hex)		Shenzhen SuperElectron Technology Co.,Ltd.
+70-4C-C1            (hex)		Tokyo Electron Miyagi Limited
 70-4C-ED            (hex)		TMRG, Inc.
 70-4D-7B            (hex)		ASUSTek COMPUTER INC.
 70-4D-E7            (hex)		Tecno Mobile Limited
@@ -36928,6 +36988,7 @@
 74-78-27            (hex)		Dell Inc.
 74-78-47            (hex)		Interdisciplinary Consulting Corporation
 74-78-A6            (hex)		Fortinet, Inc.
+74-78-DE            (hex)		vivo Mobile Communication Co., Ltd.
 74-7A-90            (hex)		Murata Manufacturing Co., Ltd.
 74-7B-7A            (hex)		ETH Inc.
 74-7D-24            (hex)		Phicomm (Shanghai) Co., Ltd.
@@ -37326,6 +37387,7 @@
 78-2E-03            (hex)		Guangdong Genius Technology Co., Ltd.
 78-2E-56            (hex)		China Mobile Group Device Co.,Ltd.
 78-2E-EF            (hex)		Nokia Corporation
+78-2F-02            (hex)		Honor Device Co., Ltd.
 78-2F-17            (hex)		Xlab Co.,Ltd
 78-30-3B            (hex)		Stephen Technologies Co.,Limited
 78-30-5D            (hex)		zte corporation
@@ -37390,6 +37452,7 @@
 78-47-E3            (hex)		Sichuan Tianyi Comheart Telecom Co.,LTD
 78-48-2C            (hex)		Start Usa, Inc.
 78-48-59            (hex)		Hewlett Packard
+78-48-FC            (hex)		System Loco Ltd
 78-49-1D            (hex)		The Will-Burt Company
 78-49-46            (hex)		Cambridge Mobile Telematics, Inc.
 78-4B-08            (hex)		f.robotics acquisitions ltd
@@ -37617,6 +37680,7 @@
 78-AE-0C            (hex)		Far South Networks
 78-AF-08            (hex)		Intel Corporate
 78-AF-58            (hex)		Gimasi Sa
+78-AF-B8            (hex)		Shenzhen SDMC Technology CP,.LTD
 78-AF-E4            (hex)		Comau S.p.A
 78-B2-13            (hex)		DWnet Technologies(Suzhou) Corporation
 78-B2-8D            (hex)		Beijing Tengling Technology CO.Ltd
@@ -37883,6 +37947,7 @@
 7C-16-89            (hex)		Sagemcom Broadband SAS
 7C-17-79            (hex)		EM Microelectronic
 7C-18-CD            (hex)		E-TRON Co.,Ltd.
+7C-19-E3            (hex)		Google, Inc.
 7C-1A-03            (hex)		8Locations Co., Ltd.
 7C-1A-C0            (hex)		Huawei Technologies Co.,Ltd
 7C-1A-FC            (hex)		Dalian Co-Edifice Video Technology Co., Ltd
@@ -38036,6 +38101,7 @@
 7C-6A-8A            (hex)		SINOBONDER Technology Co., Ltd.
 7C-6A-B3            (hex)		Ibc Technologies Inc.
 7C-6A-C3            (hex)		GatesAir, Inc
+7C-6A-D7            (hex)		New H3C Technologies Co., Ltd
 7C-6A-DB            (hex)		SafeTone Technology Co.,Ltd
 7C-6A-F3            (hex)		Integrated Device Technology (Malaysia) Sdn. Bhd.
 7C-6B-33            (hex)		Tenyu Tech Co. Ltd.
@@ -38124,6 +38190,7 @@
 7C-89-31            (hex)		Huawei Device Co., Ltd.
 7C-89-56            (hex)		Samsung Electronics Co.,Ltd
 7C-89-C1            (hex)		Palo Alto Networks
+7C-8A-3C            (hex)		Qingdao Intelligent&Precise Electronics Co.,Ltd.
 7C-8A-E1            (hex)		Compal Information (Kunshan) Co., Ltd.
 7C-8B-B5            (hex)		Samsung Electronics Co.,Ltd
 7C-8B-C1            (hex)		Infinix mobility limited
@@ -38178,7 +38245,7 @@
 7C-AD-4F            (hex)		Cisco Systems, Inc
 7C-AD-74            (hex)		Cisco Systems, Inc
 7C-AF-77            (hex)		Nokia
-7C-B0-3E            (hex)		OSRAM GmbH
+7C-B0-3E            (hex)		Inventronics GmbH
 7C-B0-73            (hex)		Realme Chongqing Mobile Telecommunications Corp.,Ltd.
 7C-B0-C2            (hex)		Intel Corporate
 7C-B1-5D            (hex)		Huawei Technologies Co.,Ltd
@@ -38329,6 +38396,18 @@
 7C-E1-FF            (hex)		Computer Performance, Inc. DBA Digital Loggers, Inc.
 7C-E2-69            (hex)		Texas Instruments
 7C-E2-CA            (hex)		Juniper Networks
+7C-E4-A1-10/28      (hex)		Truly Electronics Mfg.,Ltd
+7C-E4-A1-20/28      (hex)		De Haardt bv
+7C-E4-A1-40/28      (hex)		Weihai Idencoder Electronic Technology Co.,Ltd
+7C-E4-A1-50/28      (hex)		HI Tecnologia Industria e Comercio Ltda
+7C-E4-A1-60/28      (hex)		ISR Technologies Israel Ltd
+7C-E4-A1-70/28      (hex)		Keenfinity S.A.
+7C-E4-A1-80/28      (hex)		Shenzhen Liandian Communication Technology Co.LTD
+7C-E4-A1-90/28      (hex)		Annapurna labs
+7C-E4-A1-A0/28      (hex)		SZ Zuvi Technology Co., Ltd.
+7C-E4-A1-B0/28      (hex)		Cummins Inc
+7C-E4-A1-C0/28      (hex)		Annapurna labs
+7C-E4-A1-D0/28      (hex)		Harogic Technologies Pte. Ltd.
 7C-E4-AA            (hex)		Private
 7C-E5-24            (hex)		Quirky, Inc.
 7C-E5-3F            (hex)		Huawei Technologies Co.,Ltd
@@ -38450,6 +38529,7 @@
 80-19-67            (hex)		Shanghai Reallytek Information Technology Co.,Ltd
 80-19-70            (hex)		Samsung Electronics Co.,Ltd
 80-19-FE            (hex)		JianLing Technology CO., LTD
+80-1A-23            (hex)		AltoBeam Inc.
 80-1D-0D-00/28      (hex)		KbDevice,Inc.
 80-1D-0D-10/28      (hex)		Hörmann Warnsysteme GmbH
 80-1D-0D-20/28      (hex)		SZ Spinning Power Top Boundary Technology Co.Ltd.
@@ -38530,6 +38610,7 @@
 80-41-4E            (hex)		Bbk Educational Electronics Corp.,Ltd.
 80-42-7C            (hex)		Adolf Tedsen GmbH & Co. KG
 80-43-3F            (hex)		Juniper Networks
+80-43-5E            (hex)		Luminys Systems Corporation
 80-44-FD            (hex)		China Mobile (Hangzhou) Information Technology Co., Ltd.
 80-45-6B            (hex)		Espressif Inc.
 80-45-DD            (hex)		Intel Corporate
@@ -38709,6 +38790,7 @@
 80-99-CF            (hex)		Texas Instruments
 80-99-E7            (hex)		Sony Corporation
 80-9B-20            (hex)		Intel Corporate
+80-9B-31            (hex)		Xin Link Internaitonal Co Limited
 80-9D-65            (hex)		FN-LINK TECHNOLOGY Ltd.
 80-9F-9B            (hex)		Sichuan AI-Link Technology Co., Ltd.
 80-9F-AB            (hex)		Fiberhome Telecommunication Technologies Co.,LTD
@@ -38955,6 +39037,7 @@
 84-1B-77            (hex)		Intel Corporate
 84-1C-70            (hex)		zte corporation
 84-1D-E8            (hex)		CJ intelligent technology LTD.
+84-1E-1A            (hex)		Sanya Muyu Technology Co., Ltd
 84-1E-26            (hex)		KERNEL-I Co.,LTD
 84-1E-A3            (hex)		Sagemcom Broadband SAS
 84-1F-E8            (hex)		Espressif Inc.
@@ -39023,6 +39106,7 @@
 84-3B-10            (hex)		Lvswitches Inc.
 84-3C-4C            (hex)		Robert Bosch SRL
 84-3C-99            (hex)		zte corporation
+84-3C-FC            (hex)		Huawei Technologies Co.,Ltd
 84-3D-C6            (hex)		Cisco Systems, Inc
 84-3E-03            (hex)		Sagemcom Broadband SAS
 84-3E-1D            (hex)		Hui Zhou Gaoshengda Technology Co.,LTD
@@ -39115,6 +39199,7 @@
 84-7C-9B            (hex)		GD Midea Air-Conditioning Equipment Co.,Ltd.
 84-7C-EE            (hex)		Cisco Systems, Inc
 84-7D-50            (hex)		Holley Metering Limited
+84-7D-7E            (hex)		Cisco Systems, Inc
 84-7E-40            (hex)		Texas Instruments
 84-7F-3D            (hex)		Integrated Device Technology (Malaysia) Sdn. Bhd.
 84-80-2D            (hex)		Cisco Systems, Inc
@@ -39133,6 +39218,7 @@
 84-86-87            (hex)		weiyuantechnology
 84-86-F3            (hex)		Greenvity Communications
 84-87-FF            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
+84-88-32            (hex)		Guangzhou Shiyuan Electronic Technology Company Limited
 84-88-E1            (hex)		Apple, Inc.
 84-89-AD            (hex)		Apple, Inc.
 84-89-EC-00/28      (hex)		SmartGiant Technology
@@ -39208,6 +39294,7 @@
 84-A1-D1            (hex)		Sagemcom Broadband SAS
 84-A2-4D            (hex)		Birds Eye Systems Private Limited
 84-A3-29            (hex)		Arcadyan Corporation
+84-A3-4B            (hex)		Barrot Technology Co.,Ltd.
 84-A3-B5            (hex)		Propulsion systems
 84-A4-23            (hex)		Sagemcom Broadband SAS
 84-A4-66            (hex)		Samsung Electronics Co.,Ltd
@@ -39299,6 +39386,7 @@
 84-D0-DB            (hex)		Guangdong Juan Intelligent Technology Joint Stock Co., Ltd.
 84-D1-5A            (hex)		TCT mobile ltd
 84-D1-C1            (hex)		Intel Corporate
+84-D3-03            (hex)		Chipsea Technologies (Shenzhen) Crop.
 84-D3-28            (hex)		Apple, Inc.
 84-D3-2A            (hex)		Ieee 1905.1
 84-D3-43            (hex)		Calix Inc.
@@ -39348,6 +39436,7 @@
 84-E3-42            (hex)		Tuya Smart Inc.
 84-E4-D9            (hex)		Shenzhen NEED technology Ltd.
 84-E5-85            (hex)		EM Microelectronic
+84-E5-9E            (hex)		Shenzhen YOUHUA Technology Co., Ltd
 84-E5-D8            (hex)		Guangdong UNIPOE IoT Technology Co.,Ltd.
 84-E6-29            (hex)		Bluwan SA
 84-E6-57            (hex)		Sony Interactive Entertainment Inc.
@@ -39413,6 +39502,7 @@
 88-09-07            (hex)		MKT Systemtechnik GmbH & Co. KG
 88-09-AF            (hex)		Masimo Corporation
 88-0A-A3            (hex)		Juniper Networks
+88-0A-BD            (hex)		Wuhan Nexphoton Technology Co.,Ltd
 88-0C-E0            (hex)		Texas Instruments
 88-0E-85            (hex)		Shenzhen Boomtech Industrial Corporation
 88-0F-10            (hex)		Huami Information Technology Co.,Ltd.
@@ -39444,6 +39534,7 @@
 88-1D-FC            (hex)		Cisco Systems, Inc
 88-1E-59            (hex)		Onion Corporation
 88-1E-5A            (hex)		Apple, Inc.
+88-1E-C8            (hex)		Bouffalo Lab (Nanjing) Co., Ltd.
 88-1F-A1            (hex)		Apple, Inc.
 88-20-0D            (hex)		Apple, Inc.
 88-20-12            (hex)		LMI Technologies
@@ -39780,6 +39871,7 @@
 88-B8-D0            (hex)		Dongguan Koppo Electronic Co.,Ltd
 88-B9-45            (hex)		Apple, Inc.
 88-B9-51            (hex)		Xiaomi Communications Co Ltd
+88-B9-B8            (hex)		NXP Semiconductors Taiwan Ltd.
 88-BA-74            (hex)		Silicon Laboratories
 88-BA-7F            (hex)		Qfiednet Co., Ltd.
 88-BC-AC            (hex)		Zebra Technologies Inc.
@@ -39800,6 +39892,7 @@
 88-C3-44            (hex)		Google, Inc.
 88-C3-6E            (hex)		Beijing Ereneben lnformation Technology Limited
 88-C3-97            (hex)		Beijing Xiaomi Mobile Software Co., Ltd
+88-C3-B2            (hex)		Rotek Llc
 88-C3-B3            (hex)		Sovico
 88-C3-E5            (hex)		Betop Techonologies
 88-C4-8E            (hex)		Uneeviu Technologies India Private Limited
@@ -40180,6 +40273,7 @@
 8C-1F-64-0D-E0/36   (hex)		Ace Tech
 8C-1F-64-0D-F0/36   (hex)		Leidos
 8C-1F-64-0E-00/36   (hex)		Autopharma
+8C-1F-64-0E-10/36   (hex)		Riverloop Co., Ltd.
 8C-1F-64-0E-30/36   (hex)		JISEONGENG Co,.LTD
 8C-1F-64-0E-50/36   (hex)		Rugged Science
 8C-1F-64-0E-60/36   (hex)		Cleanwatts Digital, S.A.
@@ -40240,6 +40334,7 @@
 8C-1F-64-13-80/36   (hex)		Vissavi sp. z o.o.
 8C-1F-64-13-B0/36   (hex)		SDELcc
 8C-1F-64-13-C0/36   (hex)		SiFive Inc
+8C-1F-64-13-D0/36   (hex)		Inaba Techno Evolution Co.,Ltd
 8C-1F-64-13-E0/36   (hex)		Btec Industrial Instrument Sdn. Bhd.
 8C-1F-64-13-F0/36   (hex)		Elsist Srl
 8C-1F-64-14-00/36   (hex)		RF-Tuote Oy
@@ -40272,6 +40367,7 @@
 8C-1F-64-16-E0/36   (hex)		Benchmark Electronics BV
 8C-1F-64-16-F0/36   (hex)		Codasip s.r.o.
 8C-1F-64-17-00/36   (hex)		Fracarro Radioindustrie Srl
+8C-1F-64-17-10/36   (hex)		Maxphotoics GmbH
 8C-1F-64-17-40/36   (hex)		KST technology
 8C-1F-64-17-50/36   (hex)		Wuhan YiValley Opto-electric technology Co.,Ltd
 8C-1F-64-17-60/36   (hex)		Leidos Inc
@@ -40304,6 +40400,7 @@
 8C-1F-64-19-B0/36   (hex)		FeedFlo
 8C-1F-64-19-C0/36   (hex)		Aton srl
 8C-1F-64-1A-00/36   (hex)		Engage Technologies
+8C-1F-64-1A-40/36   (hex)		Beijing Qinghong Chuangzhi Technology Co.,Ltd.
 8C-1F-64-1A-50/36   (hex)		Dialtronics Systems Pvt Ltd
 8C-1F-64-1A-70/36   (hex)		aelettronica group srl
 8C-1F-64-1A-80/36   (hex)		LCR Embedded Systems
@@ -40378,6 +40475,7 @@
 8C-1F-64-20-C0/36   (hex)		Shanghai Stairmed Technology Co.,ltd
 8C-1F-64-20-D0/36   (hex)		Grossenbacher Systeme AG
 8C-1F-64-20-E0/36   (hex)		Alpha Bridge Technologies Private Limited
+8C-1F-64-21-00/36   (hex)		Trunexa Inc
 8C-1F-64-21-10/36   (hex)		Bipom Electronics, Inc.
 8C-1F-64-21-20/36   (hex)		Svms
 8C-1F-64-21-50/36   (hex)		XLOGIC srl
@@ -40420,6 +40518,7 @@
 8C-1F-64-25-90/36   (hex)		SHODEN Co., Ltd.
 8C-1F-64-25-A0/36   (hex)		Wuhan Xingtuxinke ELectronic Co.,Ltd
 8C-1F-64-25-C0/36   (hex)		TimeMachines Inc.
+8C-1F-64-25-D0/36   (hex)		mpsonic
 8C-1F-64-25-E0/36   (hex)		R2Sonic, LLC
 8C-1F-64-25-F0/36   (hex)		Acuris Inc
 8C-1F-64-26-00/36   (hex)		E-alarms
@@ -40490,6 +40589,7 @@
 8C-1F-64-2B-40/36   (hex)		Sonel S.A.
 8C-1F-64-2B-60/36   (hex)		Stercom Power Solutions GmbH
 8C-1F-64-2B-80/36   (hex)		Veinland GmbH
+8C-1F-64-2B-90/36   (hex)		Ultrasonic Engineering Co., Ltd.
 8C-1F-64-2B-B0/36   (hex)		Chakra Technology Ltd
 8C-1F-64-2B-C0/36   (hex)		DEUTA Werke GmbH
 8C-1F-64-2B-F0/36   (hex)		Gogo Business Aviation
@@ -40578,6 +40678,7 @@
 8C-1F-64-33-F0/36   (hex)		Lotec Teknoloji Limited Sirketi
 8C-1F-64-34-00/36   (hex)		BRS Sistemas Eletrônicos
 8C-1F-64-34-20/36   (hex)		TimeMachines Inc.
+8C-1F-64-34-30/36   (hex)		Syscom Instruments SA
 8C-1F-64-34-50/36   (hex)		Kreafeuer AG, Swiss finsh
 8C-1F-64-34-70/36   (hex)		Plut d.o.o.
 8C-1F-64-34-80/36   (hex)		Breas Medical AB
@@ -40795,7 +40896,7 @@
 8C-1F-64-47-40/36   (hex)		Audiobyte S.R.L.
 8C-1F-64-47-50/36   (hex)		Alpine Quantum Technologies GmbH
 8C-1F-64-47-60/36   (hex)		Clair Global Corporation
-8C-1F-64-47-70/36   (hex)		Blaucomm Ltd
+8C-1F-64-47-70/36   (hex)		Syndora Alto Technology Limited
 8C-1F-64-47-90/36   (hex)		AKSE srl
 8C-1F-64-47-A0/36   (hex)		Missing Link Electronics, Inc.
 8C-1F-64-47-B0/36   (hex)		Fluid Components Intl
@@ -40953,6 +41054,7 @@
 8C-1F-64-55-70/36   (hex)		In-lite Design BV
 8C-1F-64-55-80/36   (hex)		Scitel
 8C-1F-64-55-90/36   (hex)		Intozi Tech Pvt Ltd
+8C-1F-64-55-A0/36   (hex)		Zomedica
 8C-1F-64-55-B0/36   (hex)		Sheetal Wireless Technologies Pvt Ltd
 8C-1F-64-55-C0/36   (hex)		Schildknecht AG
 8C-1F-64-55-E0/36   (hex)		Hanateksystem
@@ -41086,6 +41188,7 @@
 8C-1F-64-61-60/36   (hex)		DEUTA Werke GmbH
 8C-1F-64-61-80/36   (hex)		Foshan YiFeng Electric Industrial Co., ltd
 8C-1F-64-61-90/36   (hex)		Labtrino AB
+8C-1F-64-61-B0/36   (hex)		Ehon Energy Tech Pty Ltd
 8C-1F-64-61-C0/36   (hex)		Automata GmbH & Co. KG
 8C-1F-64-61-D0/36   (hex)		Lewitt GmbH
 8C-1F-64-61-E0/36   (hex)		Hedian Digital Integration Technology Ltd.
@@ -41107,6 +41210,7 @@
 8C-1F-64-63-40/36   (hex)		Aml
 8C-1F-64-63-60/36   (hex)		Europe Trade
 8C-1F-64-63-80/36   (hex)		Thunder Data Taiwan Co., Ltd.
+8C-1F-64-63-90/36   (hex)		TRD Systems Pte Ltd
 8C-1F-64-63-B0/36   (hex)		Tiama
 8C-1F-64-63-C0/36   (hex)		Galios
 8C-1F-64-63-D0/36   (hex)		Rax-Tech International
@@ -41237,6 +41341,7 @@
 8C-1F-64-6E-D0/36   (hex)		Elbit Systems of America
 8C-1F-64-6E-E0/36   (hex)		Cortical Labs Pte Ltd
 8C-1F-64-6F-00/36   (hex)		Right Time Sports LLC
+8C-1F-64-6F-10/36   (hex)		alfamation spa
 8C-1F-64-6F-40/36   (hex)		Elsist Srl
 8C-1F-64-6F-50/36   (hex)		Logic Fruit Technologies Pvt. Ltd.
 8C-1F-64-6F-70/36   (hex)		EddyWorks Co.,Ltd
@@ -41376,6 +41481,7 @@
 8C-1F-64-7B-70/36   (hex)		James G. Biddle dba Megger
 8C-1F-64-7B-80/36   (hex)		TimeMachines Inc.
 8C-1F-64-7B-90/36   (hex)		Deviceroy
+8C-1F-64-7B-A0/36   (hex)		NATIXON Sp. z o.o.
 8C-1F-64-7B-B0/36   (hex)		Kotsu Dengyosha Co., Ltd.
 8C-1F-64-7B-C0/36   (hex)		GO development GmbH
 8C-1F-64-7B-E0/36   (hex)		inomatic GmbH
@@ -41461,6 +41567,7 @@
 8C-1F-64-82-C0/36   (hex)		Power Electronics Espana, S.L.
 8C-1F-64-82-F0/36   (hex)		AnySignal
 8C-1F-64-83-00/36   (hex)		Vtron Pty Ltd
+8C-1F-64-83-10/36   (hex)		Audio Plus
 8C-1F-64-83-50/36   (hex)		Adetec Sas
 8C-1F-64-83-70/36   (hex)		runZero, Inc
 8C-1F-64-83-80/36   (hex)		Drimaes Inc.
@@ -41473,6 +41580,7 @@
 8C-1F-64-84-00/36   (hex)		InfoMac Sp. z o.o. Sp.k.
 8C-1F-64-84-20/36   (hex)		Potter Electric Signal Co. LLC
 8C-1F-64-84-30/36   (hex)		Image Soft Oy
+8C-1F-64-84-40/36   (hex)		Deimos Controls LLC
 8C-1F-64-84-60/36   (hex)		Fo Xie Optoelectronics Technology Co., Ltd
 8C-1F-64-84-70/36   (hex)		Slat
 8C-1F-64-84-80/36   (hex)		Jena-Optronik GmbH
@@ -41825,6 +41933,7 @@
 8C-1F-64-A4-E0/36   (hex)		Syscom Instruments SA
 8C-1F-64-A4-F0/36   (hex)		Ascon Tecnologic S.r.l.
 8C-1F-64-A5-10/36   (hex)		Babtel
+8C-1F-64-A5-20/36   (hex)		Tiama
 8C-1F-64-A5-60/36   (hex)		Flextronics International Kft
 8C-1F-64-A5-70/36   (hex)		EkspertStroyProekt
 8C-1F-64-A5-A0/36   (hex)		UniPOS EOOD
@@ -41834,6 +41943,7 @@
 8C-1F-64-A5-F0/36   (hex)		Wattson Audio SA
 8C-1F-64-A6-00/36   (hex)		Active Optical Systems, LLC
 8C-1F-64-A6-10/36   (hex)		Breas Medical AB
+8C-1F-64-A6-20/36   (hex)		YUYAMA MFG Co.,Ltd
 8C-1F-64-A6-40/36   (hex)		Vigor Electric Corp.
 8C-1F-64-A6-60/36   (hex)		vtt systems Inc.
 8C-1F-64-A6-70/36   (hex)		Electrovymir LLC
@@ -41845,6 +41955,7 @@
 8C-1F-64-A7-00/36   (hex)		V-teknik Elektronik AB
 8C-1F-64-A7-10/36   (hex)		Martec S.p.A.
 8C-1F-64-A7-20/36   (hex)		First Design System Inc.
+8C-1F-64-A7-30/36   (hex)		ITK Precisioning GmbH
 8C-1F-64-A7-40/36   (hex)		Hiwin Mikrosystem Corp.
 8C-1F-64-A7-50/36   (hex)		Procon Electronics Pty Ltd
 8C-1F-64-A7-60/36   (hex)		DEUTA-WERKE GmbH
@@ -41917,6 +42028,7 @@
 8C-1F-64-AD-A0/36   (hex)		Ability Intelligent Corp.
 8C-1F-64-AD-B0/36   (hex)		Hebei Weiji Electric Co.,Ltd
 8C-1F-64-AD-C0/36   (hex)		Motor Protection Electronics
+8C-1F-64-AE-00/36   (hex)		Aster Pro-Audio Inc.
 8C-1F-64-AE-10/36   (hex)		YUYAMA MFG Co.,Ltd
 8C-1F-64-AE-20/36   (hex)		Jiangsu Yi Rong Mstar Technology Ltd.
 8C-1F-64-AE-30/36   (hex)		Private
@@ -41945,6 +42057,7 @@
 8C-1F-64-B0-30/36   (hex)		Shenzhen Pisoftware Technology Co.,Ltd.
 8C-1F-64-B0-80/36   (hex)		Cronus Electronics
 8C-1F-64-B0-C0/36   (hex)		Barkodes Bilgisayar Sistemleri Bilgi Iletisim ve Y
+8C-1F-64-B0-D0/36   (hex)		ProbeFox GmbH
 8C-1F-64-B0-E0/36   (hex)		Watthour Engineering Co., Inc.
 8C-1F-64-B0-F0/36   (hex)		HKC Security Ltd.
 8C-1F-64-B1-00/36   (hex)		MTU Aero Engines AG
@@ -42044,6 +42157,7 @@
 8C-1F-64-B9-90/36   (hex)		iLifeX
 8C-1F-64-B9-A0/36   (hex)		Quercus Technologies, S.L.
 8C-1F-64-B9-B0/36   (hex)		Kromek Limited
+8C-1F-64-B9-C0/36   (hex)		GIB Korea Co.,Ltd.
 8C-1F-64-B9-E0/36   (hex)		Power Electronics Espana, S.L.
 8C-1F-64-B9-F0/36   (hex)		Lithion Battery Inc
 8C-1F-64-BA-00/36   (hex)		Jmv Lps Ltd
@@ -42090,6 +42204,7 @@
 8C-1F-64-BC-E0/36   (hex)		BESO sp. z o.o.
 8C-1F-64-BC-F0/36   (hex)		Erba Lachema s.r.o.
 8C-1F-64-BD-00/36   (hex)		Mesa Labs, Inc.
+8C-1F-64-BD-10/36   (hex)		Butterfly Network
 8C-1F-64-BD-20/36   (hex)		attocube systems AG
 8C-1F-64-BD-30/36   (hex)		IO Master Technology
 8C-1F-64-BD-40/36   (hex)		AVEA Group, Inc.
@@ -42184,6 +42299,7 @@
 8C-1F-64-C5-70/36   (hex)		Strategic Robotic Systems
 8C-1F-64-C5-80/36   (hex)		Kitagawa Corporation
 8C-1F-64-C5-90/36   (hex)		Tunstall A/S
+8C-1F-64-C5-B0/36   (hex)		Tcl Operations Polska Sp. Z O.O.
 8C-1F-64-C5-D0/36   (hex)		Alfa Proxima d.o.o.
 8C-1F-64-C5-E0/36   (hex)		YUYAMA MFG Co.,Ltd
 8C-1F-64-C6-00/36   (hex)		Intelligent Security Systems (ISS)
@@ -42235,6 +42351,7 @@
 8C-1F-64-CA-40/36   (hex)		Bit Part LLC
 8C-1F-64-CA-60/36   (hex)		ReliaSpeak Information Technology Co., Ltd.
 8C-1F-64-CA-70/36   (hex)		eumig industrie-TV GmbH.
+8C-1F-64-CA-80/36   (hex)		Optiemus Electronics Limited
 8C-1F-64-CA-90/36   (hex)		Avant Technologies
 8C-1F-64-CA-B0/36   (hex)		Spyder Controls Corp.
 8C-1F-64-CA-D0/36   (hex)		General Motors
@@ -42243,6 +42360,7 @@
 8C-1F-64-CB-10/36   (hex)		Xi’an Sunway Communication Co., Ltd.
 8C-1F-64-CB-20/36   (hex)		Dyncir Soluções Tecnológicas Ltda
 8C-1F-64-CB-30/36   (hex)		DELO Industrie Klebstoffe GmbH & Co. KGaA
+8C-1F-64-CB-40/36   (hex)		Wi4B s.r.l.
 8C-1F-64-CB-50/36   (hex)		Gamber-Johnson LLC
 8C-1F-64-CB-60/36   (hex)		Rowan Elettronica Srl
 8C-1F-64-CB-70/36   (hex)		ARKRAY,Inc.Kyoto Laboratory
@@ -42301,6 +42419,7 @@
 8C-1F-64-D0-80/36   (hex)		Power Electronics Espana, S.L.
 8C-1F-64-D0-90/36   (hex)		Minartime(Beijing)Science &Technology Development Co.,Ltd
 8C-1F-64-D0-A0/36   (hex)		BOTEVO Building Solutions GmbH
+8C-1F-64-D0-B0/36   (hex)		Technolog Ltd
 8C-1F-64-D0-C0/36   (hex)		KS Beschallungstechnik GmbH
 8C-1F-64-D0-E0/36   (hex)		Labforge Inc.
 8C-1F-64-D0-F0/36   (hex)		Mecco LLC
@@ -42387,6 +42506,7 @@
 8C-1F-64-D8-70/36   (hex)		Experio Tech Private Limited
 8C-1F-64-D8-80/36   (hex)		University of Geneva - Department of Particle Physics
 8C-1F-64-D8-A0/36   (hex)		Boon Arthur Engineering Pte Ltd
+8C-1F-64-D8-B0/36   (hex)		I/O Controls
 8C-1F-64-D8-C0/36   (hex)		Smri
 8C-1F-64-D8-D0/36   (hex)		Wi-Tronix, LLC
 8C-1F-64-D8-E0/36   (hex)		Potter Electric Signal Co. LLC
@@ -42449,6 +42569,7 @@
 8C-1F-64-DE-20/36   (hex)		Softgent sp. z o.o.
 8C-1F-64-DE-50/36   (hex)		Gogo Business Aviation
 8C-1F-64-DE-60/36   (hex)		IHI Inspection & Instrumentation Co.,Ltd.
+8C-1F-64-DE-70/36   (hex)		Guangzhou Mofiu Technology Co., Ltd
 8C-1F-64-DE-90/36   (hex)		EON Technology, Corp
 8C-1F-64-DE-A0/36   (hex)		Natron Energy
 8C-1F-64-DE-B0/36   (hex)		PXM Marek Zupnik spolka komandytowa
@@ -42573,6 +42694,7 @@
 8C-1F-64-E9-B0/36   (hex)		Discover Energy Systems Corp.
 8C-1F-64-E9-D0/36   (hex)		Zhuhai Lonl electric Co., Ltd.
 8C-1F-64-E9-F0/36   (hex)		Lumiplan Duhamel
+8C-1F-64-EA-00/36   (hex)		Oxy Technology Usa Llc
 8C-1F-64-EA-20/36   (hex)		Vision Systems Safety Tech
 8C-1F-64-EA-60/36   (hex)		Dial Plan Limited
 8C-1F-64-EA-80/36   (hex)		Zumbach Electronic AG
@@ -42582,6 +42704,7 @@
 8C-1F-64-EA-E0/36   (hex)		Traffic Polska sp. z o. o.
 8C-1F-64-EA-F0/36   (hex)		YUYAMA MFG Co.,Ltd
 8C-1F-64-EB-00/36   (hex)		Exyte Technology GmbH
+8C-1F-64-EB-10/36   (hex)		Olzetek
 8C-1F-64-EB-20/36   (hex)		Aqua Broadcast Ltd
 8C-1F-64-EB-40/36   (hex)		1Finity Inc.
 8C-1F-64-EB-50/36   (hex)		Meiryo Denshi Corp.
@@ -42602,6 +42725,7 @@
 8C-1F-64-EC-C0/36   (hex)		Baldwin Jimek AB
 8C-1F-64-EC-F0/36   (hex)		Monnit Corporation
 8C-1F-64-ED-00/36   (hex)		Shanghai Jupper Technology Co.Ltd
+8C-1F-64-ED-10/36   (hex)		Smart Solution Inc.
 8C-1F-64-ED-30/36   (hex)		Senso2Me Nv
 8C-1F-64-ED-40/36   (hex)		Zhejiang Chitic-Safeway New Energy Technical Co.,Ltd.
 8C-1F-64-ED-50/36   (hex)		Smart Data (Shenzhen) Intelligent System Co., Ltd.
@@ -42620,6 +42744,7 @@
 8C-1F-64-EE-80/36   (hex)		Global Organ Group B.V.
 8C-1F-64-EE-90/36   (hex)		Intect AG
 8C-1F-64-EE-A0/36   (hex)		Amess
+8C-1F-64-EE-C0/36   (hex)		Lumenir Inc.
 8C-1F-64-EE-D0/36   (hex)		Viziontech UK
 8C-1F-64-EE-F0/36   (hex)		AiUnion Co.,Ltd
 8C-1F-64-EF-00/36   (hex)		Sonendo Inc
@@ -42665,6 +42790,7 @@
 8C-1F-64-F3-20/36   (hex)		Shenzhen INVT Electric Co.,Ltd
 8C-1F-64-F3-30/36   (hex)		Sicon srl
 8C-1F-64-F3-70/36   (hex)		Polarity Inc
+8C-1F-64-F3-80/36   (hex)		AKSE srl
 8C-1F-64-F3-90/36   (hex)		Weinan Wins Future Technology Co.,Ltd
 8C-1F-64-F3-A0/36   (hex)		intersaar GmbH
 8C-1F-64-F3-B0/36   (hex)		Beijing REMANG Technology Co., Ltd.
@@ -42778,6 +42904,7 @@
 8C-1F-64-FD-A0/36   (hex)		Arkham Technology
 8C-1F-64-FD-B0/36   (hex)		DeepSenXe International ltd.
 8C-1F-64-FD-C0/36   (hex)		Nuphoton Technologies
+8C-1F-64-FD-D0/36   (hex)		Atik Cameras Unipessoal, Lda
 8C-1F-64-FD-F0/36   (hex)		Potter Electric Signal Co. LLC
 8C-1F-64-FE-00/36   (hex)		Potter Electric Signal Co. LLC
 8C-1F-64-FE-10/36   (hex)		SOREL GmbH
@@ -42830,6 +42957,7 @@
 8C-35-92            (hex)		Guangzhou Shiyuan Electronic Technology Company Limited
 8C-36-7A            (hex)		Palo Alto Networks
 8C-37-B7            (hex)		Hosin Global Electronics Co.,Ltd
+8C-39-57            (hex)		Telink Micro LLC
 8C-39-5C            (hex)		Bit4id Srl
 8C-3A-7E            (hex)		Universal Electronics, Inc.
 8C-3A-E3            (hex)		LG Electronics (Mobile Communications)
@@ -43358,6 +43486,7 @@
 90-1D-27            (hex)		zte corporation
 90-1E-DD            (hex)		Great Computer Corporation
 90-1F-09            (hex)		Silicon Laboratories
+90-1F-94            (hex)		TP-Link Systems Inc.
 90-20-3A            (hex)		BYD Precision Manufacture Co.,Ltd
 90-20-83            (hex)		General Engine Management Systems Ltd.
 90-20-C2            (hex)		Hewlett Packard Enterprise
@@ -43666,6 +43795,7 @@
 90-B1-76            (hex)		Intel Corporate
 90-B1-E0            (hex)		Beijing Nebula Link Technology Co., Ltd
 90-B2-1F            (hex)		Apple, Inc.
+90-B3-39            (hex)		Espressif Inc.
 90-B4-DD            (hex)		Zpt R&D
 90-B5-7F            (hex)		Shenzhen iComm Semiconductor CO.,LTD
 90-B6-22            (hex)		Samsung Electronics Co.,Ltd
@@ -43708,6 +43838,7 @@
 90-C7-92            (hex)		Commscope
 90-C7-D8            (hex)		zte corporation
 90-C9-52            (hex)		Durin, Inc
+90-C9-7E            (hex)		Huawei Technologies Co.,Ltd
 90-C9-9B            (hex)		Tesorion Nederland B.V.
 90-CA-FA            (hex)		Google, Inc.
 90-CB-A3            (hex)		Tecno Mobile Limited
@@ -43813,6 +43944,7 @@
 90-F4-21-D0/28      (hex)		Taichitel Technology Shanghai Co.,Ltd.
 90-F4-21-E0/28      (hex)		Velan Studios Inc.
 90-F4-C1            (hex)		Rand McNally
+90-F5-10            (hex)		Technologie Optic.ca Inc.
 90-F6-44            (hex)		Huawei Device Co., Ltd.
 90-F6-52            (hex)		Tp-Link Technologies Co.,Ltd.
 90-F7-21            (hex)		IndiNatus (IndiNatus India Private Limited)
@@ -44016,6 +44148,7 @@
 94-5A-FC            (hex)		Amazon Technologies Inc.
 94-5B-7E            (hex)		Trilobit Ltda.
 94-5C-9A            (hex)		Apple, Inc.
+94-5D-BF            (hex)		Nokia Solutions and Networks India Private Limited
 94-5F-34            (hex)		Renesas Electronics (Penang) Sdn. Bhd.
 94-60-10            (hex)		Huawei Device Co., Ltd.
 94-60-D5            (hex)		Hewlett Packard Enterprise
@@ -44056,6 +44189,7 @@
 94-7F-1D            (hex)		Shenzhen Fastrain Technology Co., Ltd.
 94-7F-D8            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
 94-81-A4            (hex)		Azuray Technologies
+94-82-B2            (hex)		GL Intelligence
 94-83-C4            (hex)		GL Technologies (Hong Kong) Limited
 94-85-7A            (hex)		Evantage Industries Corp
 94-86-CD            (hex)		Seoul Electronics&Telecom
@@ -44384,6 +44518,7 @@
 98-07-09            (hex)		Huawei Device Co., Ltd.
 98-07-2D            (hex)		Texas Instruments
 98-08-02            (hex)		Orbis Bv
+98-08-18            (hex)		AltoBeam Inc.
 98-09-CF            (hex)		OnePlus Technology (Shenzhen) Co., Ltd
 98-0A-4B            (hex)		Nokia Solutions and Networks GmbH & Co. KG
 98-0C-33            (hex)		Silicon Laboratories
@@ -44593,6 +44728,7 @@
 98-74-3D            (hex)		Shenzhen Jun Kai Hengye Technology Co. Ltd
 98-74-DA            (hex)		Infinix mobility limited
 98-75-1A            (hex)		Huawei Device Co., Ltd.
+98-75-52            (hex)		Xiaomi Communications Co Ltd
 98-75-96            (hex)		EM Microelectronic
 98-76-B6            (hex)		Adafruit
 98-77-70            (hex)		Pep Digital Technology (Guangzhou) Co., Ltd
@@ -44886,6 +45022,7 @@
 98-FF-D0            (hex)		Lenovo Mobile Communication Technology Ltd.
 9A-1B-22            (hex)		InfoCore Co.,Ltd.
 9A-56-4B            (hex)		Cubix Corporation
+9A-5C-C3            (hex)		NuCOMM International Ltd.
 9A-AD-CA            (hex)		Credo
 9A-B2-F8            (hex)		SFF Committee
 9A-D2-63            (hex)		FirmTek, LLC
@@ -45012,6 +45149,7 @@
 9C-4A-7B            (hex)		Nokia Corporation
 9C-4B-6B            (hex)		iFlight Technology Company Limited
 9C-4C-AE            (hex)		Mesa Labs
+9C-4D-C2            (hex)		Cisco Systems, Inc
 9C-4E-20            (hex)		Cisco Systems, Inc
 9C-4E-36            (hex)		Intel Corporate
 9C-4E-8E            (hex)		ALT Systems Ltd
@@ -45119,11 +45257,13 @@
 9C-7A-03            (hex)		Ciena Corporation
 9C-7B-D2            (hex)		NEOLAB Convergence
 9C-7B-EF            (hex)		Hewlett Packard
+9C-7C-1E            (hex)		Cloud Network Technology Singapore Pte. Ltd.
 9C-7D-A3            (hex)		Huawei Technologies Co.,Ltd
 9C-7D-C0            (hex)		Tech4home, Lda
 9C-7F-57            (hex)		UNIC Memory Technology Co Ltd
 9C-7F-64            (hex)		Nanjing Qinheng Microelectronics Co., Ltd.
 9C-7F-81            (hex)		Shenzhen Fast Technologies Co.,Ltd
+9C-80-3D            (hex)		TCT mobile ltd
 9C-80-7D            (hex)		SYSCABLE Korea Inc.
 9C-80-DF            (hex)		Arcadyan Corporation
 9C-82-3F            (hex)		Huawei Device Co., Ltd.
@@ -45152,6 +45292,7 @@
 9C-8E-9C            (hex)		Huawei Device Co., Ltd.
 9C-8E-CD            (hex)		Amcrest Technologies
 9C-8E-DC            (hex)		Teracom Limited
+9C-8F-A9            (hex)		Genexis B.V.
 9C-90-19            (hex)		Beyless
 9C-92-4F            (hex)		Apple, Inc.
 9C-93-4E            (hex)		Xerox Corporation
@@ -45163,6 +45304,7 @@
 9C-95-6E            (hex)		Microchip Technology Inc.
 9C-95-F8            (hex)		SmartDoor Systems, LLC
 9C-96-13            (hex)		Lenovo Future Communication Technology (Chongqing) Company Limited
+9C-96-1B            (hex)		IFTER Jerzy Taczalski
 9C-97-1B            (hex)		Intel Corporate
 9C-97-26            (hex)		Vantiva Technologies Belgium
 9C-97-74            (hex)		Huawei Technologies Co.,Ltd
@@ -45273,6 +45415,7 @@
 9C-DB-AF            (hex)		Huawei Technologies Co.,Ltd
 9C-DB-CB            (hex)		Funshion Online Technologies Co.,Ltd
 9C-DC-71            (hex)		Hewlett Packard Enterprise
+9C-DC-99            (hex)		Extreme Networks, Inc.
 9C-DD-1F            (hex)		Intelligent Steward Co.,Ltd
 9C-DE-4D            (hex)		ML vision Co.,LTD
 9C-DE-F0            (hex)		Jiangxi Risound Electronics Co.,LTD
@@ -45363,6 +45506,7 @@
 9C-F8-B8            (hex)		Shenzhen Skyworth Digital Technology CO., Ltd
 9C-F8-DB            (hex)		shenzhen eyunmei technology co,.ltd
 9C-F9-38            (hex)		AREVA NP GmbH
+9C-F9-A1            (hex)		Juniper Networks
 9C-FA-3C            (hex)		Daeyoung Electronics
 9C-FA-76            (hex)		Apple, Inc.
 9C-FA-96            (hex)		T3 Technology Co., Ltd.
@@ -46018,6 +46162,7 @@ A4-35-23            (hex)		Guangdong Donyan Network Technologies Co.,Ltd.
 A4-35-2D            (hex)		TRIZ Networks corp.
 A4-36-C7            (hex)		LG Innotek
 A4-37-3E            (hex)		Huawei Device Co., Ltd.
+A4-37-E6            (hex)		Murata Manufacturing Co., Ltd.
 A4-38-31            (hex)		RF elements s.r.o.
 A4-38-CC            (hex)		Nintendo Co.,Ltd
 A4-38-FC            (hex)		Plastic Logic
@@ -46383,6 +46528,7 @@ A4-D8-CA            (hex)		Hong Kong Water World Technology Co. Limited
 A4-D9-31            (hex)		Apple, Inc.
 A4-D9-90            (hex)		Samsung Electronics Co.,Ltd
 A4-D9-A4            (hex)		neXus ID Solutions AB
+A4-D9-C6            (hex)		Airpro Technology Ltd
 A4-DA-22-00/28      (hex)		General Electric Company
 A4-DA-22-10/28      (hex)		T2T System
 A4-DA-22-20/28      (hex)		Wyze Labs Inc
@@ -48301,6 +48447,7 @@ B4-CF-DB            (hex)		Shenzhen Jiuzhou Electric Co.,LTD
 B4-CF-E0            (hex)		Sichuan tianyi kanghe communications co., LTD
 B4-D0-A9            (hex)		China Mobile Group Device Co.,Ltd.
 B4-D1-35            (hex)		Cloudistics
+B4-D1-F6            (hex)		Huawei Technologies Co.,Ltd
 B4-D2-86            (hex)		Telechips, Inc.
 B4-D3-1A            (hex)		Lysora Technology Inc.
 B4-D5-BD            (hex)		Intel Corporate
@@ -48396,6 +48543,7 @@ B8-09-8A            (hex)		Apple, Inc.
 B8-0B-9A            (hex)		Huawei Technologies Co.,Ltd
 B8-0B-9D            (hex)		ROPEX Industrie-Elektronik GmbH
 B8-0B-DA            (hex)		GD Midea Air-Conditioning Equipment Co.,Ltd.
+B8-0C-68            (hex)		Honor Device Co., Ltd.
 B8-0E-1D            (hex)		PAX Computer Technology(Shenzhen) Ltd.
 B8-10-D4            (hex)		Masimo Corporation
 B8-11-4B            (hex)		Cisco Systems, Inc
@@ -48901,6 +49049,7 @@ BC-22-47            (hex)		New H3C Technologies Co., Ltd
 BC-22-FB            (hex)		RF Industries
 BC-23-92            (hex)		BYD Precision Manufacture Company Ltd.
 BC-24-11            (hex)		Proxmox Server Solutions GmbH
+BC-24-92            (hex)		New H3C Technologies Co., Ltd
 BC-25-E0            (hex)		Huawei Technologies Co.,Ltd
 BC-25-F0            (hex)		3D Display Technologies Co., Ltd.
 BC-26-1D            (hex)		Hong Kong Tecon Technology
@@ -49346,6 +49495,7 @@ C0-06-0C            (hex)		Huawei Technologies Co.,Ltd
 C0-06-C3            (hex)		TP-Link Systems Inc
 C0-07-4A            (hex)		Brita GmbH
 C0-09-25            (hex)		FN-LINK TECHNOLOGY Ltd.
+C0-0A-CA            (hex)		SafeSquare GmbH
 C0-0D-7E            (hex)		Additech, Inc.
 C0-10-B1            (hex)		HMD Global Oy
 C0-11-73            (hex)		Samsung Electronics Co.,Ltd
@@ -49935,6 +50085,7 @@ C4-39-3A            (hex)		SMC Networks Inc
 C4-39-60            (hex)		GD Midea Air-Conditioning Equipment Co.,Ltd.
 C4-3A-35            (hex)		Fn-Link Technology Limited
 C4-3A-9F            (hex)		Siconix Inc.
+C4-3A-A5            (hex)		AzureWave Technology Inc.
 C4-3A-BE            (hex)		Sony Corporation
 C4-3C-3C            (hex)		Cybelec Sa
 C4-3C-B0            (hex)		Shenzhen Bilian Electronic Co.，Ltd
@@ -50184,6 +50335,7 @@ C4-9A-89            (hex)		Suzhou K-Hiragawa Electronic Technology Co.,Ltd
 C4-9D-08            (hex)		Huawei Device Co., Ltd.
 C4-9D-ED            (hex)		Microsoft Corporation
 C4-9E-41            (hex)		G24 Power Limited
+C4-9E-7E            (hex)		Espressif Inc.
 C4-9F-4C            (hex)		Huawei Technologies Co.,Ltd
 C4-9F-F3            (hex)		Mciao Technologies, Inc.
 C4-A0-52            (hex)		Motorola Mobility LLC, a Lenovo Company
@@ -50280,6 +50432,7 @@ C4-C9-EC            (hex)		Gugaoo HK Limited
 C4-CA-2B            (hex)		Arista Networks
 C4-CA-67            (hex)		Chongqing ZQZER Technology Co., LTD
 C4-CA-D9            (hex)		Hangzhou H3C Technologies Co., Limited
+C4-CB-33            (hex)		Garmin International
 C4-CB-54            (hex)		Fibocom Auto Inc.
 C4-CB-6B            (hex)		Airista Flow, Inc.
 C4-CB-76            (hex)		Microsoft Corporation
@@ -50853,6 +51006,7 @@ C8-D8-84            (hex)		Universal Electronics, Inc.
 C8-D9-59            (hex)		Motorola Mobility LLC, a Lenovo Company
 C8-D9-95            (hex)		Juniper Networks
 C8-D9-D2            (hex)		Hewlett Packard
+C8-DA-29            (hex)		Espressif Systems (Singapore) Pte. Ltd
 C8-DB-26            (hex)		Logitech
 C8-DD-6A            (hex)		Ohsung
 C8-DD-C9            (hex)		Lenovo Mobile Communication Technology Ltd.
@@ -51028,6 +51182,7 @@ CC-20-8C            (hex)		Huawei Technologies Co.,Ltd
 CC-20-AC            (hex)		Samsung Electronics Co.,Ltd
 CC-20-E8            (hex)		Apple, Inc.
 CC-21-19            (hex)		Samsung Electronics Co.,Ltd
+CC-21-9D            (hex)		Shenzhen Wangliantong Intelligent Technology Co.,Lte
 CC-22-18            (hex)		InnoDigital Co., Ltd.
 CC-22-37-00/28      (hex)		MEDCOM sp. z o.o.
 CC-22-37-10/28      (hex)		Terma Sp. z o.o.
@@ -51083,6 +51238,21 @@ CC-36-CF            (hex)		Cisco Systems, Inc
 CC-37-AB            (hex)		Edgecore Networks Corporation
 CC-38-D0            (hex)		Palo Alto Networks
 CC-38-E1            (hex)		Huawei Technologies Co.,Ltd
+CC-39-53-00/28      (hex)		Qingdao Sanshun Smart Electric Appliance Co.,Ltd.
+CC-39-53-10/28      (hex)		Viatek
+CC-39-53-20/28      (hex)		Esys Srl
+CC-39-53-30/28      (hex)		Ningbo AllianStream Photonics Technology Co., Ltd.
+CC-39-53-40/28      (hex)		Xuancheng Luxshare Precision Industry Co., Ltd.
+CC-39-53-50/28      (hex)		Shenzhen Junli Technology Co., Ltd
+CC-39-53-60/28      (hex)		Sky Wing Communication Electronics Co., Ltd.
+CC-39-53-70/28      (hex)		Chengdu Superxon Communication Technology Co., Ltd.
+CC-39-53-80/28      (hex)		Hangzhou Elite Digital Technology co., Ltd
+CC-39-53-90/28      (hex)		Mt-Link Technologies Co
+CC-39-53-A0/28      (hex)		InTallyCon Development FZCO
+CC-39-53-B0/28      (hex)		Dat-Con d.o.o.
+CC-39-53-C0/28      (hex)		Broadband Net Inc
+CC-39-53-D0/28      (hex)		Guang zhou Xradio Technology Co., Ltd
+CC-39-53-E0/28      (hex)		Ningbo Xiaojiang IoT Technology Co., Ltd.
 CC-39-8C            (hex)		Shiningtek
 CC-3A-61            (hex)		Samsung Electro Mechanics Co., Ltd.
 CC-3A-DF            (hex)		Neptune Technology Group Inc.
@@ -51182,6 +51352,7 @@ CC-66-18            (hex)		Adtran Inc
 CC-66-B2            (hex)		Nokia
 CC-67-D8            (hex)		Telin Semiconductor (Wuhan) Co.,Ltd
 CC-68-B6            (hex)		TP-Link Systems Inc
+CC-68-C7            (hex)		Espressif Inc.
 CC-68-E0            (hex)		Apple, Inc.
 CC-69-B0            (hex)		Global Traffic Technologies, LLC
 CC-69-FA            (hex)		Apple, Inc.
@@ -51326,6 +51497,7 @@ CC-BE-71            (hex)		OptiLogix BV
 CC-BF-0C            (hex)		Shenzhen Fenda Technology Co., Ltd
 CC-C0-79            (hex)		Murata Manufacturing Co., Ltd.
 CC-C1-04            (hex)		Applied Technical Systems
+CC-C2-53            (hex)		zte corporation
 CC-C2-61-00/28      (hex)		Ebiologic Technology Co., Ltd.
 CC-C2-61-10/28      (hex)		NWL Inc.
 CC-C2-61-20/28      (hex)		Tecnoideal Srl
@@ -51497,6 +51669,7 @@ D0-04-B0            (hex)		Samsung Electronics Co.,Ltd
 D0-05-2A            (hex)		Arcadyan Corporation
 D0-05-E4            (hex)		Huawei Device Co., Ltd.
 D0-06-6A            (hex)		Cornelis Networks, Inc.
+D0-06-74            (hex)		Siemens Industrial Automation Products Ltd., Chengdu
 D0-07-90            (hex)		Texas Instruments
 D0-07-CA            (hex)		Juniper Networks
 D0-09-C8            (hex)		Cisco Systems, Inc
@@ -52598,6 +52771,7 @@ D8-00-4D            (hex)		Apple, Inc.
 D8-00-93            (hex)		Aurender Inc.
 D8-01-D0            (hex)		Huawei Technologies Co.,Ltd
 D8-01-EB            (hex)		Infinity Electronics Ltd
+D8-02-5F            (hex)		Guangzhou Shiyuan Electronic Technology Company Limited
 D8-02-8A            (hex)		Shenzhen YOUHUA Technology Co., Ltd
 D8-02-C0            (hex)		Extreme Networks, Inc.
 D8-03-1A            (hex)		Ezurio, LLC
@@ -53013,6 +53187,7 @@ D8-EB-97            (hex)		TRENDnet, Inc.
 D8-EC-5E            (hex)		Belkin International Inc.
 D8-EC-E5            (hex)		Zyxel Communications Corporation
 D8-ED-1C            (hex)		Magna Technology SL
+D8-ED-A8            (hex)		Xiaomi Communications Co Ltd
 D8-EE-42            (hex)		Sichuan Tianyi Comheart Telecom Co.,LTD
 D8-EE-78            (hex)		Moog Protokraft
 D8-EF-42            (hex)		Huawei Device Co., Ltd.
@@ -53446,6 +53621,7 @@ DC-D8-3B            (hex)		Cisco Systems, Inc
 DC-D8-7C            (hex)		Beijing Jingdong Century Trading Co., LTD.
 DC-D8-7F            (hex)		Shenzhen JoinCyber Telecom Equipment Ltd
 DC-D9-16            (hex)		Huawei Technologies Co.,Ltd
+DC-D9-A8            (hex)		Guang zhou Xradio Technology Co., Ltd
 DC-D9-AE            (hex)		Nokia Shanghai Bell Co., Ltd.
 DC-DA-0C            (hex)		Espressif Inc.
 DC-DA-4D            (hex)		Celestica Inc.
@@ -53757,6 +53933,7 @@ E0-69-3A            (hex)		Innophase Inc.
 E0-69-95            (hex)		Pegatron Corporation
 E0-69-BA            (hex)		Cisco Systems, Inc
 E0-6A-05            (hex)		Shenzhen YOUHUA Technology Co., Ltd
+E0-6A-1B            (hex)		Shenzhen Zidoo Technology Co., Ltd.
 E0-6C-4E            (hex)		Shenzhen TINNO Mobile Technology Corp.
 E0-6C-A6            (hex)		Creotech Quantum SA
 E0-6C-C5            (hex)		Huawei Device Co., Ltd.
@@ -53862,6 +54039,7 @@ E0-B2-60            (hex)		Teno Network Technologies Company Limited
 E0-B2-F1            (hex)		Fn-Link Technology Limited
 E0-B5-2D            (hex)		Apple, Inc.
 E0-B5-5F            (hex)		Apple, Inc.
+E0-B6-13            (hex)		Arista Networks
 E0-B6-55            (hex)		Beijing Xiaomi Electronics Co., Ltd.
 E0-B6-68            (hex)		zte corporation
 E0-B6-F5-00/28      (hex)		BeSTAR Corporation
@@ -54120,6 +54298,7 @@ E4-41-E6            (hex)		Ottec Technology GmbH
 E4-42-A6            (hex)		Intel Corporate
 E4-43-4B            (hex)		Dell Inc.
 E4-43-89            (hex)		Apple, Inc.
+E4-43-CF            (hex)		TP-Link Systems Inc.
 E4-44-E5            (hex)		Extreme Networks, Inc.
 E4-45-19            (hex)		Beijing Xiaomi Electronics Co.,Ltd
 E4-46-B0            (hex)		Fujitsu Client Computing Limited
@@ -55309,6 +55488,7 @@ EC-A7-B1-C0/28      (hex)		Hiromokuten Co.,Ltd.
 EC-A7-B1-D0/28      (hex)		Usu Telecom India Private Limited
 EC-A7-B1-E0/28      (hex)		Artisight, Inc.
 EC-A8-1F            (hex)		Vantiva USA LLC
+EC-A8-54            (hex)		EFOCE Technology Co., Ltd.
 EC-A8-6B            (hex)		Elitegroup Computer Systems Co.,Ltd.
 EC-A9-07            (hex)		Apple, Inc.
 EC-A9-40            (hex)		Commscope
@@ -55325,6 +55505,7 @@ EC-AF-F9            (hex)		Hailo Technologies Ltd.
 EC-B0-D2            (hex)		EM Microelectronic
 EC-B0-E1            (hex)		Ciena Corporation
 EC-B1-06            (hex)		Acuro Networks, Inc
+EC-B1-57            (hex)		Sagemcom Broadband SAS
 EC-B1-D7            (hex)		Hewlett Packard
 EC-B1-E0            (hex)		Eltex Enterprise LTD
 EC-B2-93            (hex)		Hewlett Packard Enterprise
@@ -55891,7 +56072,7 @@ F0-D8-05            (hex)		Cisco Systems, Inc
 F0-D9-B2            (hex)		Exo S.A.
 F0-DA-7C            (hex)		Rlh Industries,Inc.
 F0-DB-2A            (hex)		Lanner Electronics, Inc.
-F0-DB-30            (hex)		Yottabyte
+F0-DB-30            (hex)		Verge.io
 F0-DB-E2            (hex)		Apple, Inc.
 F0-DB-F8            (hex)		Apple, Inc.
 F0-DC-E2            (hex)		Apple, Inc.
@@ -55903,6 +56084,7 @@ F0-E4-A2            (hex)		Huawei Technologies Co.,Ltd
 F0-E5-C3            (hex)		Drägerwerk AG & Co. KG aA
 F0-E7-52            (hex)		Shenzhen Huajuxin Semiconductor Co.,ltd
 F0-E7-7E            (hex)		Samsung Electronics Co.,Ltd
+F0-EA-E1            (hex)		Nanjing RISC-V Institute Co., Ltd.
 F0-EB-D0            (hex)		Shanghai Feixun Communication Co.,Ltd.
 F0-EC-39            (hex)		Essec
 F0-ED-19            (hex)		zte corporation
@@ -55935,10 +56117,12 @@ F0-F7-55            (hex)		Cisco Systems, Inc
 F0-F7-B3            (hex)		Phorm
 F0-F7-E7            (hex)		Huawei Technologies Co.,Ltd
 F0-F7-FC            (hex)		Huawei Technologies Co.,Ltd
+F0-F8-32            (hex)		Google, Inc.
 F0-F8-42            (hex)		KEEBOX, Inc.
 F0-F8-4A            (hex)		Buffalo.Inc
 F0-F8-F2            (hex)		Texas Instruments
 F0-F9-F7            (hex)		IES GmbH & Co. KG
+F0-FA-BA            (hex)		NVIDIA Corporation
 F0-FA-C7            (hex)		Huawei Device Co., Ltd.
 F0-FB-7F            (hex)		Mellanox Technologies, Inc.
 F0-FC-65            (hex)		SynaXG Technologies Pte. Ltd.
@@ -56362,6 +56546,7 @@ F4-B2-4E            (hex)		Huawei Device Co., Ltd.
 F4-B3-01            (hex)		Intel Corporate
 F4-B3-81            (hex)		WindowMaster A/S
 F4-B3-B1            (hex)		Silicon Laboratories
+F4-B4-9E            (hex)		eero inc.
 F4-B5-20            (hex)		Biostar Microtech international corp.
 F4-B5-2F            (hex)		Juniper Networks
 F4-B5-49            (hex)		Xiamen Yeastar Digital Technology Co., Ltd
@@ -56692,6 +56877,7 @@ F8-51-28            (hex)		SimpliSafe
 F8-51-6D            (hex)		Denwa Technology Corp.
 F8-52-DF            (hex)		VNL Europe AB
 F8-53-29            (hex)		Huawei Technologies Co.,Ltd
+F8-53-33            (hex)		Tashang Semiconductor(Shanghai) Co., Ltd.
 F8-54-AF            (hex)		ECI Telecom Ltd.
 F8-54-B8            (hex)		Amazon Technologies Inc.
 F8-54-F6            (hex)		AzureWave Technology Inc.
@@ -57057,6 +57243,7 @@ F8-F4-64            (hex)		Rawe Electonic GmbH
 F8-F5-19            (hex)		Rulogic Inc.
 F8-F5-32            (hex)		Commscope
 F8-F5-8C            (hex)		Apple, Inc.
+F8-F6-B7            (hex)		Shenzhen Bilian Electronic Co.，Ltd
 F8-F7-B9            (hex)		Huawei Technologies Co.,Ltd
 F8-F7-D2            (hex)		Equal Optics, LLC
 F8-F7-D3            (hex)		International Communications Corporation
