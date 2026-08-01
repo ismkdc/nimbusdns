@@ -29,9 +29,47 @@ pub struct BlockingLists {
     denylist_regex: Vec<Regex>,
     /// Exact gravity/blocked domains (from adlists)
     gravity_exact: DashSet<String>,
+    /// Wildcard gravity entries (`*.example.com`) — O(labels) matching
+    wildcard_deny: WildcardMatcher,
     /// Statistics
     total_blocked: usize,
     adlist_count: usize,
+}
+
+/// O(labels) wildcard domain matcher for `*.suffix` entries.
+/// Stores reversed suffixes; `is_match` checks each label boundary of the
+/// reversed query name against the set (hash lookup per boundary).
+#[derive(Default)]
+pub struct WildcardMatcher {
+    suffixes: DashSet<String>,
+}
+
+impl WildcardMatcher {
+    /// Add a `*.suffix` pattern (e.g. `*.example.com`).
+    /// The suffix itself also matches (apex), matching the previous regex behavior.
+    pub fn insert(&self, pattern: &str) {
+        let suffix = pattern.trim().strip_prefix("*.").unwrap_or(pattern.trim());
+        let mut labels: Vec<&str> = suffix.split('.').collect();
+        labels.reverse();
+        self.suffixes.insert(labels.join("."));
+    }
+
+    /// Check whether `domain` (already lowercased) matches any stored wildcard.
+    pub fn is_match(&self, domain_lower: &str) -> bool {
+        let mut labels: Vec<&str> = domain_lower.split('.').collect();
+        labels.reverse();
+        let mut current = String::new();
+        for (i, label) in labels.iter().enumerate() {
+            if i > 0 {
+                current.push('.');
+            }
+            current.push_str(label);
+            if self.suffixes.contains(&current) {
+                return true;
+            }
+        }
+        false
+    }
 }
 
 impl BlockingLists {
@@ -84,22 +122,20 @@ impl BlockingLists {
         }
 
         // Load gravity (all blocked domains from adlists)
-        // Handle wildcard gravity entries (e.g. `*.example.com`)
+        let wildcard_deny = WildcardMatcher::default();
         if let Ok(domains) = gravity.get_all_gravity_domains() {
             let mut wildcard_count = 0;
             for domain in domains {
                 let trimmed = domain.trim();
                 if trimmed.starts_with("*.") || trimmed.starts_with('*') {
-                    // Wildcard - compile as regex
-                    if let Some(re) = Self::compile_regex(trimmed) {
-                        denylist_regex.push(re);
-                        wildcard_count += 1;
-                    }
+                    // Wildcard - store in O(labels) matcher (not regex)
+                    wildcard_deny.insert(trimmed);
+                    wildcard_count += 1;
                 } else {
                     gravity_exact.insert(trimmed.to_lowercase());
                 }
             }
-            info!("Loaded {} gravity domains ({} exact, {} wildcard regex)",
+            info!("Loaded {} gravity domains ({} exact, {} wildcard)",
                 gravity_exact.len() + wildcard_count, gravity_exact.len(), wildcard_count);
         }
 
@@ -114,6 +150,7 @@ impl BlockingLists {
             allowlist_regex,
             denylist_regex,
             gravity_exact,
+            wildcard_deny,
             total_blocked,
             adlist_count,
         })
@@ -181,21 +218,26 @@ impl BlockingLists {
             }
         }
 
-        // 3. Check exact denylist
+        // 3. Check exact denylist (O(1)) before regex scans
         if self.denylist_exact.contains(&domain_lower) {
             return BlockingDecision::Blocked("exact".into());
         }
 
-        // 4. Check regex denylist (all patterns compiled with (?i) for case-insensitivity)
+        // 4. Check gravity exact (largest set, O(1)) before regex scans
+        if self.gravity_exact.contains(&domain_lower) {
+            return BlockingDecision::Blocked("gravity".into());
+        }
+
+        // 5. Check wildcard gravity (O(labels) hash lookups)
+        if self.wildcard_deny.is_match(&domain_lower) {
+            return BlockingDecision::Blocked("wildcard".into());
+        }
+
+        // 6. Check denylist regex patterns (raw /pattern/ entries only)
         for re in &self.denylist_regex {
             if re.is_match(&domain_lower) {
                 return BlockingDecision::BlockedByRegex;
             }
-        }
-
-        // 5. Check gravity
-        if self.gravity_exact.contains(&domain_lower) {
-            return BlockingDecision::Blocked("gravity".into());
         }
 
         BlockingDecision::NotBlocked
@@ -338,5 +380,26 @@ mod tests {
         assert!(re.is_match("sub.example.com"), "subdomain should match");
         assert!(re.is_match("example.com"), "apex should match");
         assert!(!re.is_match("notexample.com"), "should NOT match substring");
+    }
+
+    #[test]
+    fn test_wildcard_matcher_basics() {
+        let m = WildcardMatcher::default();
+        m.insert("*.example.com");
+        assert!(m.is_match("sub.example.com"));
+        assert!(m.is_match("example.com"));
+        assert!(!m.is_match("notexample.com"));
+        assert!(!m.is_match("x.notexample.com"));
+    }
+
+    #[test]
+    fn test_wildcard_matcher_multiple() {
+        let m = WildcardMatcher::default();
+        m.insert("*.tracker.io");
+        m.insert("*.ads.cn");
+        assert!(m.is_match("a.b.tracker.io"));
+        assert!(m.is_match("deep.ads.cn"));
+        assert!(!m.is_match("tracker.io.evil.com"));
+        assert!(!m.is_match("safe.io"));
     }
 }
