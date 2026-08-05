@@ -255,11 +255,11 @@ impl GravityDb {
         })
     }
 
-    /// Get gravity domains with pagination
-    pub fn get_gravity_entries(&self, page: usize, limit: usize) -> Result<(Vec<String>, usize), DatabaseError> {
+    /// Get gravity domains with pagination. `offset` is a row offset
+    /// (0-based), consistent with `/api/queries` — NOT a 1-based page index.
+    pub fn get_gravity_entries(&self, offset: usize, limit: usize) -> Result<(Vec<String>, usize), DatabaseError> {
         self.conn.with_conn(|conn| {
             let total: i64 = conn.query_row("SELECT COUNT(*) FROM gravity", [], |row| row.get(0))?;
-            let offset = page.saturating_sub(1) * limit;
             let mut stmt = conn.prepare(
                 "SELECT domain FROM gravity ORDER BY domain ASC LIMIT ?1 OFFSET ?2"
             )?;
@@ -581,6 +581,142 @@ mod tests {
         let domains = db.get_all_gravity_domains().unwrap();
         assert_eq!(domains.len(), 1);
         assert_eq!(domains[0], "c.com", "old entries must be replaced, not appended");
+    }
+
+    #[test]
+    fn test_get_gravity_entries_offset_pagination() {
+        let db = GravityDb::open(std::path::Path::new(":memory:"), 1000).unwrap();
+        db.replace_all_gravity(&[
+            "a.com".into(), "b.com".into(), "c.com".into(), "d.com".into(),
+        ]).unwrap();
+
+        // offset must be a row offset, not a 1-based page index: (1, 2)
+        // starts at row 1 (b.com), NOT row 0 (a.com) as a page=1 would.
+        let (page, total) = db.get_gravity_entries(1, 2).unwrap();
+        assert_eq!(total, 4);
+        assert_eq!(page, vec!["b.com".to_string(), "c.com".to_string()]);
+
+        let (page, _) = db.get_gravity_entries(2, 2).unwrap();
+        assert_eq!(page, vec!["c.com".to_string(), "d.com".to_string()]);
+    }
+
+    // ======================================================================
+    // check_blocked SQL paths + domainlist/group CRUD
+    // ======================================================================
+
+    fn gravity_db() -> GravityDb {
+        GravityDb::open(std::path::Path::new(":memory:"), 1000).unwrap()
+    }
+
+    #[test]
+    fn test_check_blocked_allowlist() {
+        let db = gravity_db();
+        db.add_domainlist(0, "allow.example.com", None).unwrap();
+        assert_eq!(
+            db.check_blocked("allow.example.com").unwrap(),
+            BlockingDecision::Allowlisted
+        );
+    }
+
+    #[test]
+    fn test_check_blocked_exact_deny() {
+        let db = gravity_db();
+        db.add_domainlist(1, "deny.example.com", None).unwrap();
+        assert_eq!(
+            db.check_blocked("deny.example.com").unwrap(),
+            BlockingDecision::Blocked("exact".into())
+        );
+        // Subdomains are NOT exact matches
+        assert_eq!(
+            db.check_blocked("sub.deny.example.com").unwrap(),
+            BlockingDecision::NotBlocked
+        );
+    }
+
+    #[test]
+    fn test_check_blocked_regex_allowlist() {
+        let db = gravity_db();
+        db.add_domainlist(2, "/^tracker\\..*\\.example\\.com$/", None).unwrap();
+        assert_eq!(
+            db.check_blocked("tracker.sub.example.com").unwrap(),
+            BlockingDecision::Allowlisted
+        );
+        assert_eq!(
+            db.check_blocked("safe.example.com").unwrap(),
+            BlockingDecision::NotBlocked
+        );
+    }
+
+    #[test]
+    fn test_check_blocked_regex_denylist_returns_id() {
+        let db = gravity_db();
+        db.add_domainlist(3, "/^bad\\..*/", None).unwrap();
+        match db.check_blocked("bad.example.com").unwrap() {
+            BlockingDecision::BlockedByRegex(id) => assert!(id > 0),
+            other => panic!("expected BlockedByRegex, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_check_blocked_gravity() {
+        let db = gravity_db();
+        db.add_gravity_domain("ads.example.com").unwrap();
+        assert_eq!(
+            db.check_blocked("ads.example.com").unwrap(),
+            BlockingDecision::Blocked("gravity".into())
+        );
+        db.remove_gravity_domain("ads.example.com").unwrap();
+        assert_eq!(
+            db.check_blocked("ads.example.com").unwrap(),
+            BlockingDecision::NotBlocked
+        );
+    }
+
+    #[test]
+    fn test_check_blocked_allowlist_overrides_gravity() {
+        let db = gravity_db();
+        db.add_domainlist(0, "both.example.com", None).unwrap();
+        db.add_gravity_domain("both.example.com").unwrap();
+        assert_eq!(
+            db.check_blocked("both.example.com").unwrap(),
+            BlockingDecision::Allowlisted
+        );
+    }
+
+    #[test]
+    fn test_domainlist_crud() {
+        let db = gravity_db();
+        let id = db.add_domainlist(1, "example.com", Some("a comment")).unwrap();
+        let entries = db.get_domainlist(1).unwrap();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].domain, "example.com");
+        assert_eq!(entries[0].comment.as_deref(), Some("a comment"));
+        assert!(entries[0].enabled);
+
+        db.update_domainlist(id, Some("renamed.com"), Some(false), Some("new")).unwrap();
+        let entries = db.get_domainlist(1).unwrap();
+        assert_eq!(entries[0].domain, "renamed.com");
+        assert!(!entries[0].enabled);
+        assert_eq!(entries[0].comment.as_deref(), Some("new"));
+
+        db.remove_domainlist(id).unwrap();
+        assert!(db.get_domainlist(1).unwrap().is_empty());
+    }
+
+    #[test]
+    fn test_create_group_and_get_groups() {
+        let db = gravity_db();
+        let id = db.create_group("LAN", Some("local devices")).unwrap();
+        assert!(id > 0);
+        let groups = db.get_groups().unwrap();
+        assert!(groups.iter().any(|g| g.name == "LAN" && g.description.as_deref() == Some("local devices")));
+    }
+
+    #[test]
+    fn test_get_clients_and_adlists_empty() {
+        let db = gravity_db();
+        assert!(db.get_clients().unwrap().is_empty());
+        assert!(db.get_adlists().unwrap().is_empty());
     }
 
 }

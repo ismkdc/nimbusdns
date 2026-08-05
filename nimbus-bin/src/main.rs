@@ -170,13 +170,24 @@ async fn async_main(args: Args, cfg: config::Config) -> anyhow::Result<()> {
                 }
             }
 
-            // Reload blocking lists from gravity DB into the running engine
+            // Reload blocking lists from gravity DB into the running engine.
+            // BlockingLists::load is CPU/IO heavy (~100k domains) — run it on
+            // the blocking pool, never on an async worker.
             if let Some(ref engine) = reload_state.blocking {
-                if let Err(e) = engine.reload(&reload_state.database.gravity) {
-                    warn!("Failed to reload blocking lists: {}", e);
-                } else {
-                    info!("Blocking lists reloaded ({} total blocked)",
-                        engine.stats().total_blocked);
+                let engine = engine.clone();
+                let gravity = reload_state.database.gravity.clone();
+                let result = tokio::task::spawn_blocking(move || {
+                    let r = engine.reload(&gravity);
+                    let total = engine.stats().total_blocked;
+                    (r, total)
+                })
+                .await;
+                match result {
+                    Ok((Ok(()), total)) => {
+                        info!("Blocking lists reloaded ({} total blocked)", total);
+                    }
+                    Ok((Err(e), _)) => warn!("Failed to reload blocking lists: {}", e),
+                    Err(e) => warn!("Blocking lists reload task failed: {}", e),
                 }
             }
         }

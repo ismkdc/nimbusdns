@@ -376,6 +376,47 @@ mod tests {
         let c = pool.acquire().await.unwrap();
         assert_eq!(c.local_addr().unwrap(), addr_a, "pool should hand back a released socket");
     }
+
+    // ── forward_tcp: length-prefixed framing round-trip ──────────────────
+    #[tokio::test]
+    async fn test_forward_tcp_framing_roundtrip() {
+        use hickory_proto::op::{Message as HickoryMessage, Query};
+        use hickory_proto::rr::{Name, RecordType};
+
+        // Local fake server: reads a length-prefixed message, echoes it back
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let server = tokio::spawn(async move {
+            let (mut stream, _) = listener.accept().await.unwrap();
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let mut len_buf = [0u8; 2];
+            stream.read_exact(&mut len_buf).await.unwrap();
+            let len = u16::from_be_bytes(len_buf) as usize;
+            let mut buf = vec![0u8; len];
+            stream.read_exact(&mut buf).await.unwrap();
+            // Echo the raw bytes back (length-prefixed)
+            stream.write_all(&len_buf).await.unwrap();
+            stream.write_all(&buf).await.unwrap();
+        });
+
+        let mut query = HickoryMessage::query();
+        query.metadata.id = 0x1234;
+        query.add_query(Query::query(
+            Name::from_utf8("tcp.example.com").unwrap(),
+            RecordType::A,
+        ));
+        let query_bytes = query.to_vec().unwrap();
+
+        let forwarder = DnsForwarder {
+            dot_manager: Arc::new(crate::dns::dot::DotManager::new()),
+            upstreams: vec![],
+            udp_pool: SocketPool::new(),
+        };
+        let result = forwarder.forward_tcp(&query_bytes, addr, Duration::from_secs(5)).await;
+        server.await.unwrap();
+        let msg = result.expect("echoed response must parse");
+        assert_eq!(msg.metadata.id, 0x1234, "response ID must survive the round-trip");
+    }
 }
 
 #[derive(Debug, thiserror::Error)]

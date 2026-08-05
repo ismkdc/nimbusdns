@@ -83,7 +83,7 @@ pub struct SafeConnection {
 
 impl SafeConnection {
     /// Open a SQLite database with optimal settings
-    pub fn open(path: &Path, _busy_timeout: u64) -> Result<Self, DatabaseError> {
+    pub fn open(path: &Path, busy_timeout: u64) -> Result<Self, DatabaseError> {
         // Ensure parent directory exists
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
@@ -98,10 +98,10 @@ impl SafeConnection {
         )?;
 
         // Use WAL mode for better concurrent performance
-        conn.execute_batch(
+        conn.execute_batch(&format!(
             "PRAGMA journal_mode=WAL;
              PRAGMA synchronous=NORMAL;
-             PRAGMA busy_timeout=1000;
+             PRAGMA busy_timeout={busy_timeout};
              PRAGMA foreign_keys=ON;
              PRAGMA cache_size=-16384;        -- 16 MB cache
              PRAGMA temp_store=MEMORY;
@@ -109,7 +109,7 @@ impl SafeConnection {
              PRAGMA page_size=4096;
              PRAGMA default_cache_size=4096;
              PRAGMA secure_delete=OFF;"
-        )?;
+        ))?;
 
         debug!("Database opened: {} (page_size=4096, WAL mode)", path.display());
 
@@ -241,4 +241,50 @@ pub fn run_migrations(conn: &Connection) -> Result<(), DatabaseError> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn test_busy_timeout_param_applied() {
+        // The caller-provided busy_timeout must be honored by the PRAGMA,
+        // not silently ignored and replaced with a hardcoded value.
+        let conn = SafeConnection::open(Path::new(":memory:"), 4321).unwrap();
+        let got: i64 = conn
+            .with_conn(|c| Ok(c.query_row("PRAGMA busy_timeout", [], |r| r.get(0))?))
+            .unwrap();
+        assert_eq!(got, 4321);
+    }
+
+    #[test]
+    fn test_run_migrations_to_current_version() {
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        run_migrations(&conn).unwrap();
+
+        let version: i32 = conn
+            .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 4, "migrations must reach the current schema version");
+
+        for table in ["queries", "sessions", "message"] {
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name=?1",
+                    [table],
+                    |r| r.get(0),
+                )
+                .unwrap();
+            assert_eq!(count, 1, "table {table} must exist after migrations");
+        }
+
+        // Idempotent: a second run must not error or bump the version
+        run_migrations(&conn).unwrap();
+        let version: i32 = conn
+            .query_row("SELECT COALESCE(MAX(version), 0) FROM schema_version", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(version, 4);
+    }
 }

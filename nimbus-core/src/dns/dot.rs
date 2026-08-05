@@ -19,7 +19,7 @@ use rustls::ClientConfig;
 use tokio::net::TcpStream;
 use tokio::sync::mpsc;
 use tokio_rustls::TlsConnector;
-use tracing::{debug, error, info};
+use tracing::{debug, error, info, warn};
 
 use crate::config::DnsUpstream;
 
@@ -83,9 +83,7 @@ impl DotManager {
 
     fn build_tls_config() -> ClientConfig {
         let mut root_store = rustls::RootCertStore::empty();
-        for cert in rustls_native_certs::load_native_certs().expect("load native CA certs") {
-            root_store.add(cert).ok();
-        }
+        load_native_roots(&mut root_store);
         ClientConfig::builder()
             .with_root_certificates(root_store)
             .with_no_client_auth()
@@ -166,13 +164,26 @@ impl DotManager {
     }
 }
 
-/// Persistent TLS connection manager.
-/// Maintains one TLS connection per upstream.
-/// Reads queries from channel, writes to TLS, reads responses,
 /// Per-connection atomic ID generator for unique transaction IDs.
-fn next_conn_id() -> u16 {
-    static NEXT_ID: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(1);
-    NEXT_ID.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+/// Shared across all connections; a single monotonically increasing counter
+/// means freshly reconnected connections never reuse an ID that a previous
+/// connection on the same upstream still has in-flight.
+static NEXT_ID: std::sync::atomic::AtomicU16 = std::sync::atomic::AtomicU16::new(1);
+
+/// Allocate a DNS transaction ID that is not currently in-flight on this
+/// connection. The u16 counter wraps after 65,535 queries; skipping IDs that
+/// still have a pending entry prevents a wrapped ID from clobbering the
+/// pending entry (and its caller) of the still-in-flight query that owns it.
+fn unique_conn_id(
+    pending: &HashMap<u16, PendingEntry>,
+    counter: &std::sync::atomic::AtomicU16,
+) -> u16 {
+    loop {
+        let id = counter.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        if !pending.contains_key(&id) {
+            return id;
+        }
+    }
 }
 
 /// Shared pending map between reader and writer tasks
@@ -271,33 +282,33 @@ async fn tls_connection_task(
                         }
                     };
 
-                    // Assign unique per-connection ID to avoid collision
-                    let conn_id = next_conn_id();
-                    let reply_tx = query.reply_tx;
-
                     // Wire format: [2-byte length][DNS message] where DNS ID is at bytes 2-3
                     let mut data = query.data.to_vec();
-                    let original_dns_id = if data.len() >= 4 {
+                    let reply_tx = query.reply_tx;
+                    let conn_id = if data.len() >= 4 {
                         let id = u16::from_be_bytes([data[2], data[3]]);
+                        // Allocate a per-connection ID that skips any value
+                        // still pending on this connection, so a wrapped
+                        // counter can never clobber a live entry's ID.
+                        let mut map = pending.lock();
+                        let conn_id = unique_conn_id(&map, &NEXT_ID);
                         // Overwrite DNS ID with our unique connection ID (bytes 2-3)
                         data[2] = (conn_id >> 8) as u8;
                         data[3] = conn_id as u8;
-                        id
+                        // Register the pending entry BEFORE writing so a very fast
+                        // upstream response (received between write and insert)
+                        // still finds its entry and is not discarded as unmatched.
+                        map.insert(conn_id, PendingEntry {
+                            reply_tx,
+                            original_dns_id: id,
+                        });
+                        drop(map);
+                        conn_id
                     } else {
                         // Invalid query, fail it
                         let _ = reply_tx.send(Err(DotError::ConnectionClosed));
                         continue;
                     };
-                    // Register the pending entry BEFORE writing so a very fast
-                    // upstream response (received between write and insert)
-                    // still finds its entry and is not discarded as unmatched.
-                    {
-                        let mut map = pending.lock();
-                        map.insert(conn_id, PendingEntry {
-                            reply_tx,
-                            original_dns_id,
-                        });
-                    }
                     match writer.write_all(&data).await {
                         Ok(_) => {
                             debug!("DoT sent query id={} to {}", conn_id, address);
@@ -332,6 +343,28 @@ async fn tls_connection_task(
             }
         }
     }
+}
+
+/// Load the system native CA store into `root_store`, tolerating individual
+/// unparseable certificates. A failure to load the store at all is logged and
+/// leaves the store empty — DoT certificate verification then fails
+/// per-connection instead of panicking the whole daemon at startup.
+fn load_native_roots(root_store: &mut rustls::RootCertStore) {
+    let result = rustls_native_certs::load_native_certs();
+    let mut added = 0usize;
+    for cert in result.certs {
+        if root_store.add(cert).is_ok() {
+            added += 1;
+        }
+    }
+    if !result.errors.is_empty() {
+        warn!(
+            "Failed to load {} native CA certificates: {:?} (DoT verification may fail)",
+            result.errors.len(),
+            result.errors
+        );
+    }
+    debug!("Loaded {added} native CA certificates");
 }
 
 /// Connect TCP + perform TLS handshake
@@ -407,5 +440,49 @@ mod tests {
         assert!(!map.contains_key(&2), "timed-out caller must be swept");
         assert!(!map.contains_key(&3), "timed-out caller must be swept");
         assert_eq!(map.len(), 1);
+    }
+
+    // ── unique_conn_id: never reuses an ID still pending on this conn ─────
+
+    #[test]
+    fn test_unique_conn_id_skips_pending_collision() {
+        // Counter is about to yield 5, but 5 is still in-flight (pending).
+        // The ID allocator must skip 5 and take the next free value.
+        let counter = std::sync::atomic::AtomicU16::new(5);
+        let mut pending = HashMap::new();
+        pending.insert(5, pending_entry());
+        pending.insert(6, pending_entry());
+
+        let id = unique_conn_id(&pending, &counter);
+
+        assert_eq!(id, 7, "pending IDs 5 and 6 must be skipped");
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 8);
+    }
+
+    #[test]
+    fn test_unique_conn_id_wraps_around_without_hitting_pending() {
+        // u16 counter wrapped to 0; 0 must not be reused while a stale entry
+        // with ID 0 exists, and subsequent IDs must keep advancing.
+        let counter = std::sync::atomic::AtomicU16::new(0);
+        let mut pending = HashMap::new();
+        pending.insert(0, pending_entry());
+
+        let id = unique_conn_id(&pending, &counter);
+        assert_eq!(id, 1);
+        assert_eq!(counter.load(std::sync::atomic::Ordering::Relaxed), 2);
+    }
+
+    // ── load_native_roots: must never panic on a failing native store ─────
+
+    #[test]
+    fn test_load_native_roots_does_not_panic() {
+        // Regression: `load_native_certs().expect(...)` panicked the whole
+        // daemon at startup if the native store could not be loaded. The
+        // loader must tolerate a missing/unreadable store and just leave the
+        // root store empty (DoT verification fails per-connection instead).
+        let mut root_store = rustls::RootCertStore::empty();
+        load_native_roots(&mut root_store); // must not panic
+        // The store may be empty or populated depending on the host; the
+        // invariant is only that loading never panics.
     }
 }

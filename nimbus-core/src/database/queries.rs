@@ -787,4 +787,179 @@ mod tests {
         assert_eq!(c1.count, 2);
         assert!(!top.iter().any(|c| c.name == "10.0.0.9"), "old client must be excluded");
     }
+
+    // -- store / stats / filters / pagination ------------------------------
+
+    #[test]
+    fn test_store_query_and_stats() {
+        let db = test_db();
+        db.store_query(stored(1, "a.com", "10.0.0.1")).unwrap();
+        db.store_query_batch(&[stored(2, "b.com", "10.0.0.2"), stored(3, "c.com", "10.0.0.3")]).unwrap();
+        let stats = db.get_stats().unwrap();
+        assert_eq!(stats.total, 3);
+    }
+
+    #[test]
+    fn test_get_queries_domain_filter() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "example.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now - 60, "tracker.net", "10.0.0.2")).unwrap();
+        db.store_query(stored(now - 120, "example.org", "10.0.0.3")).unwrap();
+
+        let filter = QueryFilter {
+            domain: Some("example".into()),
+            limit: 100,
+            ..Default::default()
+        };
+        let (entries, total) = db.get_queries(&filter).unwrap();
+        assert_eq!(total, 2);
+        assert!(entries.iter().all(|e| e.domain.contains("example")));
+    }
+
+    #[test]
+    fn test_get_queries_status_filter() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        let mut blocked = stored(now, "blocked.com", "10.0.0.1");
+        blocked.status = QueryStatus::Blocked;
+        db.store_query(stored(now, "ok.com", "10.0.0.2")).unwrap();
+        db.store_query(blocked).unwrap();
+
+        let filter = QueryFilter { status: Some(1), limit: 100, ..Default::default() };
+        let (entries, total) = db.get_queries(&filter).unwrap();
+        assert_eq!(total, 1);
+        assert_eq!(entries[0].domain, "blocked.com");
+    }
+
+    #[test]
+    fn test_get_queries_pagination() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        for i in 0..4 {
+            db.store_query(stored(now - i * 10, &format!("d{i}.com"), "10.0.0.1")).unwrap();
+        }
+        // limit + offset page through the newest-first list
+        let filter = QueryFilter { limit: 2, offset: 2, ..Default::default() };
+        let (entries, total) = db.get_queries(&filter).unwrap();
+        assert_eq!(total, 4);
+        assert_eq!(entries.len(), 2);
+    }
+
+    #[test]
+    fn test_get_query_type_distribution_and_recent_blocked() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        let mut q1 = stored(now, "a.com", "10.0.0.1");
+        q1.query_type = 1;
+        let mut q2 = stored(now - 10, "b.com", "10.0.0.2");
+        q2.query_type = 28;
+        let mut b = stored(now - 5, "blocked.com", "10.0.0.3");
+        b.status = QueryStatus::Blocked;
+        db.store_query_batch(&[q1, q2, b]).unwrap();
+
+        let dist = db.get_query_type_distribution().unwrap();
+        // q1 + the blocked query both default to type 1
+        assert!(dist.iter().any(|c| c.query_type == 1 && c.count == 2));
+        assert!(dist.iter().any(|c| c.query_type == 28 && c.count == 1));
+
+        let recent = db.get_recent_blocked(10).unwrap();
+        assert_eq!(recent.len(), 1);
+        assert_eq!(recent[0].domain, "blocked.com");
+    }
+
+    #[test]
+    fn test_delete_old_queries() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "recent.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now - 100_000, "old.com", "10.0.0.2")).unwrap();
+
+        let deleted = db.delete_old_queries(3600).unwrap();
+        assert_eq!(deleted, 1, "only the query older than 1h must be deleted");
+        assert_eq!(db.get_stats().unwrap().total, 1);
+    }
+
+    #[test]
+    fn test_todays_queries() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "today.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now - 864_000, "old.com", "10.0.0.2")).unwrap();
+        assert_eq!(db.todays_queries().unwrap(), 1);
+    }
+
+    #[test]
+    fn test_suggestions() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "news.example.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now, "news.example.com", "10.0.0.2")).unwrap();
+        db.store_query(stored(now, "other.org", "10.0.0.1")).unwrap();
+
+        let domains = db.get_domain_suggestions("news", 10).unwrap();
+        assert!(domains.contains(&"news.example.com".to_string()));
+
+        let clients = db.get_client_suggestions("10.0.0", 10).unwrap();
+        assert!(!clients.is_empty());
+    }
+
+    #[test]
+    fn test_get_query_history_buckets() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.store_query(stored(now, "a.com", "10.0.0.1")).unwrap();
+        db.store_query(stored(now - 60, "b.com", "10.0.0.1")).unwrap();
+        let history = db.get_query_history().unwrap();
+        assert!(!history.is_empty());
+        let total: i64 = history.iter().map(|h| h.total).sum();
+        assert_eq!(total, 2);
+    }
+
+    // -- sessions ----------------------------------------------------------
+
+    #[test]
+    fn test_sessions_crud_and_expiry() {
+        let db = test_db();
+        let now = chrono::Utc::now().timestamp();
+        db.create_session("sid1", now + 3600, Some("10.0.0.1"), Some("agent")).unwrap();
+        db.create_session("sid2", now - 10, None, None).unwrap(); // already expired
+
+        let s = db.get_session("sid1").unwrap().expect("sid1 must exist");
+        assert_eq!(s.client_ip.as_deref(), Some("10.0.0.1"));
+        assert_eq!(s.user_agent.as_deref(), Some("agent"));
+
+        db.touch_session("sid1").unwrap();
+        assert!(db.get_session("sid1").unwrap().unwrap().last_used_at.unwrap() >= now);
+
+        db.refresh_session("sid1", now + 7200).unwrap();
+        assert_eq!(db.get_session("sid1").unwrap().unwrap().expires_at, now + 7200);
+
+        let removed = db.cleanup_expired_sessions().unwrap();
+        assert_eq!(removed, 1, "only the expired session must be cleaned");
+        assert!(db.get_session("sid2").unwrap().is_none());
+        assert!(db.get_session("sid1").unwrap().is_some());
+
+        db.delete_session("sid1").unwrap();
+        assert!(db.get_session("sid1").unwrap().is_none());
+    }
+
+    // -- DHCP lease persistence --------------------------------------------
+
+    #[test]
+    fn test_dhcp_lease_persistence() {
+        let db = test_db();
+        ensure_dhcp_leases_table(&db).unwrap();
+        persist_dhcp_lease(&db, "aa:bb:cc:dd:ee:ff", 0xC0A80101, "laptop", 12345).unwrap();
+
+        let rows = load_dhcp_leases(&db).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].0, "aa:bb:cc:dd:ee:ff");
+        assert_eq!(rows[0].1, 0xC0A80101);
+        assert_eq!(rows[0].2, "laptop");
+        assert_eq!(rows[0].3, 12345);
+
+        delete_dhcp_lease(&db, "aa:bb:cc:dd:ee:ff").unwrap();
+        assert!(load_dhcp_leases(&db).unwrap().is_empty());
+    }
 }

@@ -420,6 +420,90 @@ mod tests {
         // Key retained while within window
         assert_eq!(limiter.attempts.len(), 1);
     }
+
+    // ======================================================================
+    // Password hashing & verification
+    // ======================================================================
+
+    fn sha256_hex(s: &str) -> String {
+        use sha2::{Digest, Sha256};
+        Sha256::digest(s.as_bytes()).iter().map(|b| format!("{:02x}", b)).collect()
+    }
+
+    #[test]
+    fn test_hash_and_verify_password() {
+        let hash = hash_password("s3cret!").unwrap();
+        assert!(hash.starts_with("$argon2"), "expected argon2 PHC string, got: {}", hash);
+        assert!(verify_password("s3cret!", &Some(hash.clone())));
+        assert!(!verify_password("wrong", &Some(hash)));
+    }
+
+    #[test]
+    fn test_verify_password_legacy_sha256_fallback() {
+        // A 64-char hex hash is treated as the legacy SHA-256 scheme
+        let stored = sha256_hex("legacypass");
+        assert!(verify_password("legacypass", &Some(stored.clone())));
+        assert!(!verify_password("wrongpass", &Some(stored)));
+    }
+
+    #[test]
+    fn test_verify_password_empty_hash_requires_empty_password() {
+        // An explicitly empty stored hash means "no password": only an empty
+        // password matches (auth_enabled gates whether this path is reached).
+        assert!(verify_password("", &Some(String::new())));
+        assert!(!verify_password("anything", &Some(String::new())));
+    }
+
+    #[test]
+    fn test_verify_password_none_or_invalid_is_false() {
+        assert!(!verify_password("anything", &None));
+        assert!(!verify_password("x", &Some("not-a-valid-hash".into())));
+        // A 63-char hex string is NOT a valid legacy SHA-256 (needs exactly 64)
+        assert!(!verify_password("x", &Some("a".repeat(63))));
+    }
+
+    #[test]
+    fn test_is_auth_enabled() {
+        assert!(!is_auth_enabled(&None));
+        assert!(!is_auth_enabled(&Some(String::new())));
+        assert!(is_auth_enabled(&Some("$argon2id$v=19$...".into())));
+    }
+
+    // ======================================================================
+    // SID extraction from headers
+    // ======================================================================
+
+    #[test]
+    fn test_extract_sid_x_api_key_takes_precedence() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("X-API-Key", "apikey-123".parse().unwrap());
+        headers.insert(axum::http::header::COOKIE, "sid=cookie-456".parse().unwrap());
+        assert_eq!(extract_sid_from_headers(&headers).as_deref(), Some("apikey-123"));
+    }
+
+    #[test]
+    fn test_extract_sid_from_cookie() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::COOKIE, "theme=dark; sid=cookie-456".parse().unwrap());
+        assert_eq!(extract_sid_from_headers(&headers).as_deref(), Some("cookie-456"));
+    }
+
+    #[test]
+    fn test_extract_sid_empty_api_key_falls_back_to_cookie() {
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert("X-API-Key", "".parse().unwrap());
+        headers.insert(axum::http::header::COOKIE, "sid=cookie-456".parse().unwrap());
+        assert_eq!(extract_sid_from_headers(&headers).as_deref(), Some("cookie-456"));
+    }
+
+    #[test]
+    fn test_extract_sid_missing_is_none() {
+        let headers = axum::http::HeaderMap::new();
+        assert_eq!(extract_sid_from_headers(&headers), None);
+        let mut headers = axum::http::HeaderMap::new();
+        headers.insert(axum::http::header::COOKIE, "theme=dark".parse().unwrap());
+        assert_eq!(extract_sid_from_headers(&headers), None, "cookie without sid must be ignored");
+    }
 }
 
 

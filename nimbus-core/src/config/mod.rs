@@ -112,21 +112,9 @@ pub struct DnsConfig {
     #[serde(default = "default_dns_port")]
     pub port: u16,
 
-    /// Maximum concurrent DNS queries
+    /// Maximum concurrent DNS queries (bounds listener task spawns)
     #[serde(default = "default_max_queries")]
     pub max_concurrent_queries: usize,
-
-    /// DoT connection pool size per upstream
-    #[serde(default = "default_dot_conn_max")]
-    pub dot_conn_max: usize,
-
-    /// DoT pipeline depth per connection
-    #[serde(default = "default_dot_job_max")]
-    pub dot_job_max: usize,
-
-    /// DoT overflow queue size
-    #[serde(default = "default_dot_pending_max")]
-    pub dot_pending_max: usize,
 }
 
 /// Configuration for a DNS upstream server
@@ -533,18 +521,6 @@ fn default_max_queries() -> usize {
     150
 }
 
-fn default_dot_conn_max() -> usize {
-    4
-}
-
-fn default_dot_job_max() -> usize {
-    32
-}
-
-fn default_dot_pending_max() -> usize {
-    16
-}
-
 fn default_web_ports() -> Vec<String> {
     vec!["80o".into(), "443os".into()]
 }
@@ -827,9 +803,6 @@ impl Default for DnsConfig {
             interface: None,
             port: 53,
             max_concurrent_queries: default_max_queries(),
-            dot_conn_max: default_dot_conn_max(),
-            dot_job_max: default_dot_job_max(),
-            dot_pending_max: default_dot_pending_max(),
         }
     }
 }
@@ -1056,5 +1029,32 @@ mod tests {
     fn test_parse_bool_env_rejects_invalid() {
         assert!(parse_bool_env("banana").is_err());
         assert!(parse_bool_env("").is_err());
+    }
+
+    // -- WebPort parsing ----------------------------------------------------
+
+    #[test]
+    fn test_webport_parse() {
+        assert_eq!(WebPort::parse("80o"), Some(WebPort::Http(80)));
+        assert_eq!(WebPort::parse("443os"), Some(WebPort::Https(443)));
+        assert_eq!(WebPort::parse("8080"), Some(WebPort::Http(8080)));
+        assert_eq!(WebPort::parse(""), None);
+        assert_eq!(WebPort::parse("abc"), None);
+        assert_eq!(WebPort::parse("80x"), None);
+        assert_eq!(WebPort::parse("os"), None);
+        assert_eq!(WebPort::parse("  80o  "), Some(WebPort::Http(80)), "whitespace must be trimmed");
+    }
+
+    #[test]
+    fn test_http_port_picks_first_plain_http() {
+        // Default ports: ["80o", "443os"] → first plain HTTP is 80
+        let ws = WebServerConfig::default();
+        assert_eq!(ws.http_port(), 80);
+        // Explicit config where the first entry is TLS → still finds plain HTTP
+        let ws = WebServerConfig {
+            ports: vec!["443os".into(), "8080o".into()],
+            ..Default::default()
+        };
+        assert_eq!(ws.http_port(), 8080);
     }
 }

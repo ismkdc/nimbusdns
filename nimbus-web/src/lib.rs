@@ -48,3 +48,27 @@ fn mime_type(filename: &str) -> &'static str {
     else if filename.ends_with(".ico") { "image/x-icon" }
     else { "application/octet-stream" }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_mime_types() {
+        assert_eq!(mime_type("index.html"), "text/html; charset=utf-8");
+        assert_eq!(mime_type("style.css"), "text/css; charset=utf-8");
+        assert_eq!(mime_type("app.js"), "application/javascript; charset=utf-8");
+        assert_eq!(mime_type("logo.png"), "image/png");
+        assert_eq!(mime_type("favicon.svg"), "image/svg+xml");
+        assert_eq!(mime_type("favicon.ico"), "image/x-icon");
+        assert_eq!(mime_type("data.bin"), "application/octet-stream");
+    }
+
+    #[test]
+    fn test_serve_file_index_and_missing() {
+        assert_eq!(serve_file("").status(), StatusCode::OK);
+        assert_eq!(serve_file("/").status(), StatusCode::OK);
+        assert_eq!(serve_file("index.html").status(), StatusCode::OK);
+        assert_eq!(serve_file("definitely-missing.txt").status(), StatusCode::NOT_FOUND);
+    }
+}

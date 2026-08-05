@@ -31,12 +31,20 @@ pub fn start(
         info!("Blocklist fetcher started (source: {})", source_url);
 
         let do_fetch = || async {
-            if let Err(e) = fetch_and_import(&gravity, &source_url).await {
+            if let Err(e) = fetch_and_import(gravity.clone(), &source_url).await {
                 warn!("Blocklist fetch failed: {}", e);
-            } else if let Some(ref engine) = blocking_engine
-                && let Err(e) = engine.reload(&gravity) {
-                    warn!("Blocking engine reload after fetch failed: {}", e);
+            } else if let Some(ref engine) = blocking_engine {
+                // BlockingLists::load (SQLite + reloading ~100k domains into
+                // memory) is CPU/IO heavy — run it on the blocking pool, never
+                // on an async worker where it would stall the whole runtime.
+                let engine = engine.clone();
+                let gravity = gravity.clone();
+                match tokio::task::spawn_blocking(move || engine.reload(&gravity)).await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => warn!("Blocking engine reload after fetch failed: {}", e),
+                    Err(e) => warn!("Blocking engine reload task failed: {}", e),
                 }
+            }
         };
 
         let domain_count = gravity.total_blocked().unwrap_or(0);
@@ -70,7 +78,7 @@ pub fn start(
 }
 
 /// Fetch the blocklist from the given URL and import into gravity database.
-pub async fn fetch_and_import(gravity: &GravityDb, source_url: &str) -> Result<(), anyhow::Error> {
+pub async fn fetch_and_import(gravity: Arc<GravityDb>, source_url: &str) -> Result<(), anyhow::Error> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .user_agent("NimbusDNS/0.1")
@@ -97,9 +105,15 @@ pub async fn fetch_and_import(gravity: &GravityDb, source_url: &str) -> Result<(
         ));
     }
 
-    // Import into gravity database
-    // Strategy: clear existing gravity domains and bulk insert
-    gravity.replace_all_gravity(&domains)?;
+    // Import into gravity database. rusqlite is a blocking API and this
+    // transaction inserts ~100k rows — it must run on the blocking pool,
+    // never on an async worker (it would stall every task on the runtime).
+    let gravity_for_import = gravity.clone();
+    let domains_for_import = domains.clone();
+    tokio::task::spawn_blocking(move || gravity_for_import.replace_all_gravity(&domains_for_import))
+        .await
+        .map_err(|e| anyhow::anyhow!("gravity import task failed: {e}"))?
+        .map_err(|e| anyhow::anyhow!("gravity import failed: {e}"))?;
 
     info!("Successfully imported {} domains into gravity database", domains.len());
     Ok(())

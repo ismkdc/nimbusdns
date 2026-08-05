@@ -590,4 +590,25 @@ mod tests {
         let lists = lists_with(&[], &["both.example.com"], &["both.example.com"], &[]);
         assert_eq!(lists.check_blocked("both.example.com"), BlockingDecision::Blocked("exact".into()));
     }
+
+    // ── reload: picks up new gravity domains from the DB ──────────────────
+
+    #[test]
+    fn test_reload_picks_up_new_gravity_domains() {
+        use crate::database::gravity::GravityDb;
+        use std::path::Path;
+
+        let db = GravityDb::open(Path::new(":memory:"), 1000).unwrap();
+        db.add_gravity_domain("before.example.com").unwrap();
+        let cfg = crate::config::Config::default();
+        let engine = BlockingEngine::load(&db, &cfg).unwrap();
+        assert!(engine.is_blocked("before.example.com"));
+        assert!(!engine.is_blocked("after.example.com"));
+
+        // Add a domain after load and reload → the running engine must block it
+        db.add_gravity_domain("after.example.com").unwrap();
+        engine.reload(&db).unwrap();
+        assert!(engine.is_blocked("after.example.com"), "reload must pick up new domains");
+        assert!(engine.is_blocked("before.example.com"), "existing domains must survive reload");
+    }
 }

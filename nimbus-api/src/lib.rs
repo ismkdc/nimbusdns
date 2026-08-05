@@ -189,19 +189,31 @@ pub async fn serve(
             tokio::select! {
                 _ = interval.tick() => {
                     // Clean expired sessions (DB)
-                    if let Err(e) = cleanup_state.app_state.database.nimbus_db.cleanup_expired_sessions() {
+                    let db = cleanup_state.app_state.database.nimbus_db.clone();
+                    if let Err(e) = tokio::task::spawn_blocking(move || db.cleanup_expired_sessions())
+                        .await
+                        .map_err(|e| e.to_string())
+                        .and_then(|r| r.map_err(|e| e.to_string()))
+                    {
                         tracing::warn!("Session cleanup error: {}", e);
                     }
                     // Clean expired sessions from the in-memory cache too
                     cleanup_state.session_cache.remove_expired(chrono::Utc::now().timestamp());
-                    // Delete old queries based on retention config (only if logging is enabled)
-                    let cfg = cleanup_state.app_state.config.read();
-                    if cfg.dns.query_log {
-                        let retention = cfg.dns.query_retention;
-                        if retention > 0
-                            && let Err(e) = cleanup_state.app_state.database.nimbus_db.delete_old_queries(retention as i64) {
-                                tracing::warn!("Query retention cleanup error: {}", e);
-                            }
+                    // Delete old queries based on retention config (only if logging is enabled).
+                    // Extract values out of the !Send read guard before the `.await` below.
+                    let (query_log, retention) = {
+                        let cfg = cleanup_state.app_state.config.read();
+                        (cfg.dns.query_log, cfg.dns.query_retention)
+                    };
+                    if query_log && retention > 0 {
+                        let db = cleanup_state.app_state.database.nimbus_db.clone();
+                        if let Err(e) = tokio::task::spawn_blocking(move || db.delete_old_queries(retention as i64))
+                            .await
+                            .map_err(|e| e.to_string())
+                            .and_then(|r| r.map_err(|e| e.to_string()))
+                        {
+                            tracing::warn!("Query retention cleanup error: {}", e);
+                        }
                     }
                     // Clean stale overTime client histories
                     cleanup_state.app_state.over_time.cleanup_stale_clients();
@@ -248,6 +260,21 @@ fn api_err(status: StatusCode, msg: &str) -> (StatusCode, Json<serde_json::Value
         "code": status.as_u16(),
     });
     (status, Json(error))
+}
+
+/// Run a blocking database call on the blocking thread pool so async worker
+/// threads (which also serve DNS on the same tokio runtime) are never stalled
+/// by synchronous SQLite I/O — rusqlite's `Connection` is a blocking API.
+async fn db_blocking<F, T, E>(f: F) -> Result<T, String>
+where
+    F: FnOnce() -> Result<T, E> + Send + 'static,
+    T: Send + 'static,
+    E: std::fmt::Display + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
 }
 
 #[derive(Serialize)]
@@ -412,38 +439,43 @@ async fn get_stats_summary(State(state): State<Arc<InternalState>>) -> (StatusCo
 }
 
 async fn get_top_clients(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus_db.get_top_clients(10) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let items = db_blocking(move || db.get_top_clients(10))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_top_domains(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus_db.get_top_domains(10) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let items = db_blocking(move || db.get_top_domains(10))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_top_upstreams(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus_db.get_top_upstreams(10) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let items = db_blocking(move || db.get_top_upstreams(10))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_query_types(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus_db.get_query_type_distribution() {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let items = db_blocking(move || db.get_query_type_distribution())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_recent_blocked(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.nimbus_db.get_recent_blocked(20) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let items = db_blocking(move || db.get_recent_blocked(20))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 /// POST /api/dns/benchmark - measure TCP latency to a DNS server.
@@ -500,17 +532,19 @@ pub struct CreateGroupRequest {
 }
 
 async fn get_allowlist(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.get_domainlist(0) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let items = db_blocking(move || db.get_domainlist(0))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_denylist(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.get_domainlist(1) {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let items = db_blocking(move || db.get_domainlist(1))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 /// Reload the blocking engine after list mutations (spawn_blocking for SQLite)
@@ -554,26 +588,28 @@ async fn add_to_allowlist(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<AddDomainRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.add_domainlist(0, &body.domain, body.comment.as_deref()) {
-        Ok(id) => {
-            apply_blocking_delta(&state, BlockingDelta::AddAllow, &body.domain);
-            Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
-        }
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let domain = body.domain.clone();
+    let comment = body.comment.clone();
+    let id = db_blocking(move || db.add_domainlist(0, &domain, comment.as_deref()))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    apply_blocking_delta(&state, BlockingDelta::AddAllow, &body.domain);
+    Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
 }
 
 async fn add_to_denylist(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<AddDomainRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.add_domainlist(1, &body.domain, body.comment.as_deref()) {
-        Ok(id) => {
-            apply_blocking_delta(&state, BlockingDelta::AddDeny, &body.domain);
-            Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
-        }
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let domain = body.domain.clone();
+    let comment = body.comment.clone();
+    let id = db_blocking(move || db.add_domainlist(1, &domain, comment.as_deref()))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    apply_blocking_delta(&state, BlockingDelta::AddDeny, &body.domain);
+    Ok(api_ok(serde_json::json!({"status": "added", "id": id})))
 }
 
 async fn remove_from_allowlist(
@@ -581,81 +617,90 @@ async fn remove_from_allowlist(
     Path(id): Path<i32>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // Resolve the domain from the DB so we can remove it from memory too
-    let domain = match state.app_state.database.gravity.get_domainlist(0) {
-        Ok(list) => list.into_iter().find(|e| e.id == id).map(|e| e.domain),
-        Err(_) => None,
-    };
-    match state.app_state.database.gravity.remove_domainlist(id) {
-        Ok(_) => {
-            if let Some(d) = domain {
-                apply_blocking_delta(&state, BlockingDelta::RemoveAllow, &d);
-            }
-            Ok(api_ok(serde_json::json!({"status": "removed"})))
-        }
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    let gravity = state.app_state.database.gravity.clone();
+    let domain = db_blocking(move || gravity.get_domainlist(0))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?
+        .into_iter().find(|e| e.id == id).map(|e| e.domain);
+    let gravity = state.app_state.database.gravity.clone();
+    db_blocking(move || gravity.remove_domainlist(id))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    if let Some(d) = domain {
+        apply_blocking_delta(&state, BlockingDelta::RemoveAllow, &d);
     }
+    Ok(api_ok(serde_json::json!({"status": "removed"})))
 }
 
 async fn remove_from_denylist(
     State(state): State<Arc<InternalState>>,
     Path(id): Path<i32>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let domain = match state.app_state.database.gravity.get_domainlist(1) {
-        Ok(list) => list.into_iter().find(|e| e.id == id).map(|e| e.domain),
-        Err(_) => None,
-    };
-    match state.app_state.database.gravity.remove_domainlist(id) {
-        Ok(_) => {
-            if let Some(d) = domain {
-                apply_blocking_delta(&state, BlockingDelta::RemoveDeny, &d);
-            }
-            Ok(api_ok(serde_json::json!({"status": "removed"})))
-        }
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    let gravity = state.app_state.database.gravity.clone();
+    let domain = db_blocking(move || gravity.get_domainlist(1))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?
+        .into_iter().find(|e| e.id == id).map(|e| e.domain);
+    let gravity = state.app_state.database.gravity.clone();
+    db_blocking(move || gravity.remove_domainlist(id))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    if let Some(d) = domain {
+        apply_blocking_delta(&state, BlockingDelta::RemoveDeny, &d);
     }
+    Ok(api_ok(serde_json::json!({"status": "removed"})))
 }
 
 async fn get_domains(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // Combine all domainlist types
-    let mut all = Vec::new();
-    for dtype in 0..=3 {
-        match state.app_state.database.gravity.get_domainlist(dtype) {
-            Ok(items) => all.extend(items),
-            Err(e) => return Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
+    let db = state.app_state.database.gravity.clone();
+    let all = db_blocking::<_, _, nimbus_core::database::DatabaseError>(move || {
+        let mut all = Vec::new();
+        for dtype in 0..=3 {
+            all.extend(db.get_domainlist(dtype)?);
         }
-    }
+        Ok(all)
+    })
+    .await
+    .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     Ok(api_ok(all))
 }
 
 async fn get_groups(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.get_groups() {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let items = db_blocking(move || db.get_groups())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn create_group(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<CreateGroupRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.create_group(&body.name, body.description.as_deref()) {
-        Ok(id) => Ok(api_ok(serde_json::json!({"status": "created", "id": id}))),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let name = body.name.clone();
+    let description = body.description.clone();
+    let id = db_blocking(move || db.create_group(&name, description.as_deref()))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(serde_json::json!({"status": "created", "id": id})))
 }
 
 async fn get_clients(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.get_clients() {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let items = db_blocking(move || db.get_clients())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_adlists(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    match state.app_state.database.gravity.get_adlists() {
-        Ok(items) => Ok(api_ok(items)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.gravity.clone();
+    let items = db_blocking(move || db.get_adlists())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(items))
 }
 
 async fn get_database_info(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
@@ -693,15 +738,18 @@ async fn get_queries(
         offset: params.offset.unwrap_or(0).max(0),
     };
 
-    match state.app_state.database.nimbus_db.get_queries(&filter) {
-        Ok((entries, total)) => Ok(api_ok(serde_json::json!({
-            "entries": entries,
-            "total": total,
-            "limit": filter.limit,
-            "offset": filter.offset,
-        }))),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let limit = filter.limit;
+    let offset = filter.offset;
+    let (entries, total) = db_blocking(move || db.get_queries(&filter))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(serde_json::json!({
+        "entries": entries,
+        "total": total,
+        "limit": limit,
+        "offset": offset,
+    })))
 }
 
 /// Query parameters for /api/queries/suggestions
@@ -720,14 +768,20 @@ async fn get_queries_suggestions(
     let limit = 10;
 
     match field {
-        "domain" => match state.app_state.database.nimbus_db.get_domain_suggestions(&query, limit) {
-            Ok(items) => Ok(api_ok(items)),
-            Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-        },
-        "client" => match state.app_state.database.nimbus_db.get_client_suggestions(&query, limit) {
-            Ok(items) => Ok(api_ok(items)),
-            Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-        },
+        "domain" => {
+            let db = state.app_state.database.nimbus_db.clone();
+            let items = db_blocking(move || db.get_domain_suggestions(&query, limit))
+                .await
+                .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+            Ok(api_ok(items))
+        }
+        "client" => {
+            let db = state.app_state.database.nimbus_db.clone();
+            let items = db_blocking(move || db.get_client_suggestions(&query, limit))
+                .await
+                .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+            Ok(api_ok(items))
+        }
         _ => Err(api_err(StatusCode::BAD_REQUEST, "field must be 'domain' or 'client'")),
     }
 }
@@ -741,10 +795,11 @@ async fn get_history(
         return Ok(api_ok(slots));
     }
     // Fallback to DB query if overTime is empty (e.g., fresh start)
-    match state.app_state.database.nimbus_db.get_query_history() {
-        Ok(slots) => Ok(api_ok(slots)),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let db = state.app_state.database.nimbus_db.clone();
+    let slots = db_blocking(move || db.get_query_history())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(slots))
 }
 
 async fn get_network() -> (StatusCode, Json<serde_json::Value>) {
@@ -819,7 +874,8 @@ async fn get_system_info() -> (StatusCode, Json<serde_json::Value>) {
 
 async fn get_health(State(state): State<Arc<InternalState>>) -> (StatusCode, Json<serde_json::Value>) {
     // Actually probe the DB instead of always reporting healthy (B9).
-    let db_ok = state.app_state.database.nimbus_db.todays_queries().is_ok();
+    let db = state.app_state.database.nimbus_db.clone();
+    let db_ok = db_blocking(move || db.todays_queries()).await.is_ok();
     let status = if db_ok { "healthy" } else { "degraded" };
     api_ok(HealthInfo {
         status: status.to_string(),
@@ -836,25 +892,43 @@ async fn setup_password(
     Json(body): Json<auth::AuthRequest>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // If password is already set, require a valid session to change it
-    if auth::is_auth_enabled(&state.app_state.config.read().webserver.password_hash) {
+    // (clone the hash first so the config read guard is dropped before any
+    // `.await` — parking_lot guards are !Send, so holding one across an await
+    // would make the handler future non-Send and fail to compile).
+    let password_hash = state.app_state.config.read().webserver.password_hash.clone();
+    if auth::is_auth_enabled(&password_hash) {
         let sid = auth::extract_sid_from_headers(&headers)
             .ok_or_else(|| api_err(StatusCode::UNAUTHORIZED, "Authentication required"))?;
-        auth::validate_session(&state.app_state.database.nimbus_db, &sid)
+        let db = state.app_state.database.nimbus_db.clone();
+        let sid_clone = sid.clone();
+        tokio::task::spawn_blocking(move || auth::validate_session(&db, &sid_clone))
+            .await
+            .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
             .map_err(|_| api_err(StatusCode::UNAUTHORIZED, "Authentication required"))?;
     }
-    let password = body.password.as_deref().unwrap_or("");
+    let password = body.password.as_deref().unwrap_or("").to_string();
     if password.is_empty() {
         return Err(api_err(StatusCode::BAD_REQUEST, "Password cannot be empty"));
     }
-    let hashed = auth::hash_password(password).map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
-    let mut config = state.app_state.config.write();
-    config.webserver.password_hash = Some(hashed);
-    // Write to config file
-    let path = state.app_state.config_path.clone();
-    let cfg_clone = config.clone();
-    drop(config);
-    write_config_file(&cfg_clone, &path)
+    // Argon2 hashing is memory-hard and takes ~50-100ms — never run it on an
+    // async worker thread.
+    let hashed = tokio::task::spawn_blocking(move || auth::hash_password(&password))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?
         .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    // Scoped block: the config write guard is !Send, so it must be dropped
+    // before the next `.await` (the spawn_blocking write below).
+    let cfg_clone = {
+        let mut config = state.app_state.config.write();
+        config.webserver.password_hash = Some(hashed);
+        config.clone()
+    };
+    // Write to config file (blocking fs I/O)
+    let path = state.app_state.config_path.clone();
+    let write_result = tokio::task::spawn_blocking(move || write_config_file(&cfg_clone, &path))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    write_result.map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     Ok(api_ok(serde_json::json!({"status": "password_set"})))
 }
 
@@ -879,20 +953,36 @@ async fn authenticate(
         return Err(auth::AuthError::RateLimited);
     }
 
-    // Verify password (if auth is enabled)
-    let password_hash = &state.app_state.config.read().webserver.password_hash;
-    let password = body.password.as_deref().unwrap_or("");
-    if auth::is_auth_enabled(password_hash)
-        && !auth::verify_password(password, password_hash) {
-            return Err(auth::AuthError::InvalidCredentials);
-        }
+    // Verify password (if auth is enabled). Argon2 verification is
+    // memory-hard — run it on the blocking pool, not an async worker.
+    let password_hash = state.app_state.config.read().webserver.password_hash.clone();
+    let password = body.password.as_deref().unwrap_or("").to_string();
+    if auth::is_auth_enabled(&password_hash)
+        && !tokio::task::spawn_blocking(move || auth::verify_password(&password, &password_hash))
+            .await
+            .unwrap_or(false)
+    {
+        return Err(auth::AuthError::InvalidCredentials);
+    }
 
     // Create session (minimum 60 seconds)
     let timeout = state.app_state.config.read().webserver.session_timeout.max(60);
-    let sid = auth::create_session(&state.app_state.database.nimbus_db, Some(&client_ip), None, timeout)?;
+    let db = state.app_state.database.nimbus_db.clone();
+    let client_ip_db = client_ip.clone();
+    let sid = tokio::task::spawn_blocking(move || {
+        auth::create_session(&db, Some(&client_ip_db), None, timeout)
+    })
+    .await
+    .map_err(|e| auth::AuthError::Internal(e.to_string()))??;
 
     // Cache the new session in memory
-    let session = state.app_state.database.nimbus_db.get_session(&sid)?.ok_or(auth::AuthError::Unauthorized)?;
+    let db = state.app_state.database.nimbus_db.clone();
+    let sid_db = sid.clone();
+    let session = tokio::task::spawn_blocking(move || db.get_session(&sid_db))
+        .await
+        .map_err(|e| auth::AuthError::Internal(e.to_string()))?
+        .map_err(auth::AuthError::from)?
+        .ok_or(auth::AuthError::Unauthorized)?;
     state.session_cache.insert(&session);
 
     // Clear rate limit on success
@@ -915,10 +1005,20 @@ async fn delete_session(
         .ok_or(auth::AuthError::Unauthorized)?;
 
     // Validate the session via the cache (also removes from cache on logout)
-    state.session_cache.validate(&state.app_state.database.nimbus_db, &sid)?;
+    let cache = state.session_cache.clone();
+    let db = state.app_state.database.nimbus_db.clone();
+    let sid_validate = sid.clone();
+    tokio::task::spawn_blocking(move || cache.validate(&db, &sid_validate))
+        .await
+        .map_err(|e| auth::AuthError::Internal(e.to_string()))??;
 
     // Delete the session
-    state.app_state.database.nimbus_db.delete_session(&sid)?;
+    let db = state.app_state.database.nimbus_db.clone();
+    let sid_delete = sid.clone();
+    tokio::task::spawn_blocking(move || db.delete_session(&sid_delete))
+        .await
+        .map_err(|e| auth::AuthError::Internal(e.to_string()))?
+        .map_err(auth::AuthError::from)?;
     state.session_cache.remove(&sid);
 
     Ok(api_ok(serde_json::json!({"status": "logged_out"})))
@@ -1004,9 +1104,13 @@ async fn update_config(
     new_config.validate()
         .map_err(|e| api_err(StatusCode::BAD_REQUEST, &format!("Invalid config: {}", e)))?;
 
-    // Write to config file
-    write_config_file(&new_config, &state.app_state.config_path)
-        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    // Write to config file (blocking fs I/O — off the async worker)
+    let path = state.app_state.config_path.clone();
+    let cfg_to_write = new_config.clone();
+    let write_result = tokio::task::spawn_blocking(move || write_config_file(&cfg_to_write, &path))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    write_result.map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
 
     // Update in-memory config
     let mut config = state.app_state.config.write();
@@ -1077,25 +1181,32 @@ async fn set_blocking_status(
     State(state): State<Arc<InternalState>>,
     Json(body): Json<serde_json::Value>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let action = body.get("action").and_then(|v| v.as_str()).unwrap_or("");
-    let mut config = state.app_state.config.write();
+    let action = body.get("action").and_then(|v| v.as_str()).unwrap_or("").to_string();
 
-    use nimbus_core::config::BlockingMode;
-    let new_mode = match action {
-        "enable" | "on" => BlockingMode::Null,
-        "disable" | "off" => BlockingMode::Disabled,
-        "toggle" => match config.dns.blocking_mode {
-            BlockingMode::Disabled => BlockingMode::Null,
-            _ => BlockingMode::Disabled,
-        },
-        _ => return Err(api_err(StatusCode::BAD_REQUEST, "action must be 'enable', 'disable', or 'toggle'")),
+    // Scoped block: the config write guard is !Send, so it must be dropped
+    // before the `.await` that persists the file below.
+    let (cfg_to_write, mode_str) = {
+        let mut config = state.app_state.config.write();
+        use nimbus_core::config::BlockingMode;
+        let new_mode = match action.as_str() {
+            "enable" | "on" => BlockingMode::Null,
+            "disable" | "off" => BlockingMode::Disabled,
+            "toggle" => match config.dns.blocking_mode {
+                BlockingMode::Disabled => BlockingMode::Null,
+                _ => BlockingMode::Disabled,
+            },
+            _ => return Err(api_err(StatusCode::BAD_REQUEST, "action must be 'enable', 'disable', or 'toggle'")),
+        };
+        config.dns.blocking_mode = new_mode;
+        (config.clone(), format!("{:?}", new_mode))
     };
 
-    config.dns.blocking_mode = new_mode;
-    // Persist to config file so the change survives restart
-    write_config_file(&config, &state.app_state.config_path)
-        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
-    let mode_str = format!("{:?}", new_mode);
+    // Persist to config file so the change survives restart (blocking fs I/O)
+    let path = state.app_state.config_path.clone();
+    let write_result = tokio::task::spawn_blocking(move || write_config_file(&cfg_to_write, &path))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    write_result.map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     Ok(api_ok(serde_json::json!({"status": "updated", "blocking": mode_str})))
 }
 
@@ -1130,8 +1241,10 @@ async fn get_logs() -> (StatusCode, Json<serde_json::Value>) {
 
 /// GET /api/blocklist - blocklist status info
 async fn get_blocklist_status(State(state): State<Arc<InternalState>>) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    let count = state.app_state.database.gravity.total_blocked()
-        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let gravity = state.app_state.database.gravity.clone();
+    let count = db_blocking(move || gravity.total_blocked())
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     let source = state.app_state.config.read().blocking.source_url.clone();
     Ok(api_ok(serde_json::json!({
         "source": source,
@@ -1144,7 +1257,7 @@ async fn post_blocklist_refresh(State(state): State<Arc<InternalState>>) -> Resu
     let gravity = state.app_state.database.gravity.clone();
     let url = state.app_state.config.read().blocking.source_url.clone();
     tokio::spawn(async move {
-        if let Err(e) = nimbus_core::blocking::fetcher::fetch_and_import(&gravity, &url).await {
+        if let Err(e) = nimbus_core::blocking::fetcher::fetch_and_import(gravity, &url).await {
             tracing::warn!("Blocklist refresh failed: {}", e);
         }
     });
@@ -1160,8 +1273,11 @@ async fn post_blocklist_add(
     if domain.is_empty() {
         return Err(api_err(StatusCode::BAD_REQUEST, "domain is required"));
     }
-    state.app_state.database.gravity.add_gravity_domain(domain)
-        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let gravity = state.app_state.database.gravity.clone();
+    let domain_db = domain.to_string();
+    db_blocking(move || gravity.add_gravity_domain(&domain_db))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     apply_blocking_delta(&state, BlockingDelta::AddGravity, domain);
     Ok(api_ok(serde_json::json!({"status": "added", "domain": domain})))
 }
@@ -1171,8 +1287,11 @@ async fn delete_blocklist_entry(
     State(state): State<Arc<InternalState>>,
     Path(domain): Path<String>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
-    state.app_state.database.gravity.remove_gravity_domain(&domain)
-        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string()))?;
+    let gravity = state.app_state.database.gravity.clone();
+    let domain_db = domain.clone();
+    db_blocking(move || gravity.remove_gravity_domain(&domain_db))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
     apply_blocking_delta(&state, BlockingDelta::RemoveGravity, &domain);
     Ok(api_ok(serde_json::json!({"status": "removed", "domain": domain})))
 }
@@ -1183,20 +1302,19 @@ async fn get_blocklist_entries(
     Query(params): Query<QueriesParams>,
 ) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, Json<serde_json::Value>)> {
     // `offset` is a row offset (consistent with /api/queries), not a page
-    // number. Convert to the 1-based page the DB layer expects.
+    // number — pass it straight through to the DB layer.
     let limit = params.limit.unwrap_or(100).clamp(1, 1000) as usize;
     let offset = params.offset.unwrap_or(0).max(0) as usize;
-    // limit is clamped to >= 1, so this is always a valid page number
-    let page = offset / limit + 1;
-    match state.app_state.database.gravity.get_gravity_entries(page, limit) {
-        Ok((domains, total)) => Ok(api_ok(serde_json::json!({
-            "entries": domains,
-            "total": total,
-            "offset": offset,
-            "limit": limit,
-        }))),
-        Err(e) => Err(api_err(StatusCode::INTERNAL_SERVER_ERROR, &e.to_string())),
-    }
+    let gravity = state.app_state.database.gravity.clone();
+    let (domains, total) = db_blocking(move || gravity.get_gravity_entries(offset, limit))
+        .await
+        .map_err(|e| api_err(StatusCode::INTERNAL_SERVER_ERROR, &e))?;
+    Ok(api_ok(serde_json::json!({
+        "entries": domains,
+        "total": total,
+        "offset": offset,
+        "limit": limit,
+    })))
 }
 
 /// GET /api/endpoints - list all available API endpoints

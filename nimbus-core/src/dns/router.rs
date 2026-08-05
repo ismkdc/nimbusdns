@@ -76,22 +76,33 @@ impl QueryRouter {
 
         debug!("Query: {} {} from {} (id={})", domain, qtype, client_addr, id);
 
+        // Snapshot the live config values once per query — one read lock
+        // instead of a separate read per lookup below. Values are still read
+        // fresh on every query, so runtime changes (API / SIGHUP) take effect.
+        let (blocking_mode, blocking_ip, query_log, upstreams) = {
+            let cfg = self.state.config.read();
+            (
+                cfg.dns.blocking_mode,
+                cfg.dns.blocking_ip,
+                cfg.dns.query_log,
+                cfg.dns.upstreams.clone(),
+            )
+        };
+
         // 1. Rate limiting
         if self.rate_limiter.is_rate_limited(&client_addr) {
             debug!("Rate limited: {} from {}", domain, client_addr);
             // Log with RateLimited status (7) so query stats reflect it
-            self.log_query(id, &domain, qtype, &client_addr, 7, start.elapsed());
+            self.log_query(query_log, id, &domain, qtype, &client_addr, 7, start.elapsed());
             return make_error_response(id, &query, ResponseCode::Refused);
         }
 
         // 2. Blocking check - in-memory (no SQLite per query)
         // Skip entirely when blocking is disabled (mode == Disabled)
-        let blocking_mode = self.state.config.read().dns.blocking_mode;
         if blocking_applies(blocking_mode) && self.blocking.is_blocked(&domain) {
             debug!("Blocked: {}", domain);
-            let blocking_ip = self.state.config.read().dns.blocking_ip;
             let response = make_blocked_response(id, &query, blocking_mode, qtype, blocking_ip);
-            self.log_query(id, &domain, qtype, &client_addr, 1, start.elapsed());
+            self.log_query(query_log, id, &domain, qtype, &client_addr, 1, start.elapsed());
             return response;
         }
 
@@ -106,7 +117,7 @@ impl QueryRouter {
 
         if let Some(cached) = self.cache.get(&cache_key) {
             debug!("Cache hit: {} {} from {} (hits={})", domain, qtype, client_addr, cached.hits.load(std::sync::atomic::Ordering::Relaxed));
-            self.log_query(id, &domain, qtype, &client_addr, 2, start.elapsed());
+            self.log_query(query_log, id, &domain, qtype, &client_addr, 2, start.elapsed());
             // Rewrite response: update transaction ID + TTLs
             let mut resp = cached.data.to_vec();
             if resp.len() >= 2 {
@@ -125,55 +136,100 @@ impl QueryRouter {
             return QueryResult::Response(resp);
         }
 
-        // 4. Forward to upstream
-        // Clone upstreams out of RwLock guard so the guard is dropped before .await
-        let upstreams = self.state.config.read().dns.upstreams.clone();
-        for upstream in &upstreams {
-            match self.forwarder.forward(&query, upstream, DEFAULT_TIMEOUT).await {
-                Ok(response) => {
-                    let response_bytes = match response.to_vec() {
-                        Ok(b) => b,
-                        Err(_) => continue,
-                    };
+        // 4. Forward to upstream — the WHOLE attempt (all upstreams, plus each
+        // upstream's UDP→TCP fallback) is bounded by one overall deadline so
+        // timeouts can't compound to tens of seconds when upstreams fail.
+        let response = self
+            .forward_attempt(&query, upstreams, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT)
+            .await;
 
-                    // Compute cache TTL: min answer TTL, SOA TTL on negative
-                    // responses (RFC 2308), or 0 (no cache) on SERVFAIL.
-                    let elapsed_secs = start.elapsed().as_secs() as u32;
-                    let ttl = cache_ttl_secs(&response).saturating_sub(elapsed_secs);
-
-                    // Don't cache SERVFAIL or zero-TTL responses
-                    if ttl > 0 {
-                        let cached = CachedResponse {
-                            data: Arc::from(response_bytes.as_slice()),
-                            cached_at: Instant::now(),
-                            original_ttl: ttl,
-                            ttl,
-                            qtype: qtype.into(),
-                            qclass: DNSClass::IN.into(),
-                            hits: Default::default(),
-                        };
-                        self.cache.insert(cache_key.clone(), cached);
-                    }
-
-                    let status = response.metadata.response_code;
-                    debug!("Forwarded {} {} via {} -> {:?} in {:?} (cached_ttl={}s)",
-                        domain, qtype, upstream_label(upstream), status, start.elapsed(), ttl);
-
-                    self.log_query(id, &domain, qtype, &client_addr, 3, start.elapsed());
-                    return QueryResult::Response(response_bytes);
-                }
-                Err(e) => {
-                    debug!("Upstream {} failed for {} {}: {} ({:?})", upstream_label(upstream), domain, qtype, e, start.elapsed());
-                }
+        let response = match response {
+            Some(response) => response,
+            None => {
+                warn!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
+                self.log_query(query_log, id, &domain, qtype, &client_addr, 5, start.elapsed());
+                return make_error_response(id, &query, ResponseCode::ServFail);
             }
+        };
+
+        let response_bytes = match response.to_vec() {
+            Ok(b) => b,
+            Err(_) => {
+                self.log_query(query_log, id, &domain, qtype, &client_addr, 5, start.elapsed());
+                return make_error_response(id, &query, ResponseCode::ServFail);
+            }
+        };
+
+        // Compute cache TTL: min answer TTL, SOA TTL on negative
+        // responses (RFC 2308), or 0 (no cache) on SERVFAIL.
+        let elapsed_secs = start.elapsed().as_secs() as u32;
+        let ttl = cache_ttl_secs(&response).saturating_sub(elapsed_secs);
+
+        // Don't cache SERVFAIL or zero-TTL responses
+        if ttl > 0 {
+            let cached = CachedResponse {
+                data: Arc::from(response_bytes.as_slice()),
+                cached_at: Instant::now(),
+                original_ttl: ttl,
+                ttl,
+                qtype: qtype.into(),
+                qclass: DNSClass::IN.into(),
+                hits: Default::default(),
+            };
+            self.cache.insert(cache_key.clone(), cached);
         }
 
-        warn!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
-        self.log_query(id, &domain, qtype, &client_addr, 5, start.elapsed());
-        make_error_response(id, &query, ResponseCode::ServFail)
+        debug!("Forwarded {} {} in {:?} (cached_ttl={}s)",
+            domain, qtype, start.elapsed(), ttl);
+
+        self.log_query(query_log, id, &domain, qtype, &client_addr, 3, start.elapsed());
+        QueryResult::Response(response_bytes)
     }
 
-    fn log_query(&self, _id: u16, domain: &str, qtype: RecordType, client: &std::net::SocketAddr, status: i32, elapsed: Duration) {
+    /// Try every configured upstream for `query`, returning the first success.
+    /// The whole attempt is bounded by an `overall` deadline so per-attempt
+    /// UDP→TCP fallback and multiple upstreams cannot compound the worst-case
+    /// latency when upstreams are slow or failing. Each upstream gets at most
+    /// `per_attempt` (capped by the remaining overall budget), so a fast
+    /// failing upstream still leaves time for the next one.
+    async fn forward_attempt(
+        &self,
+        query: &Message,
+        upstreams: Vec<DnsUpstream>,
+        per_attempt: Duration,
+        overall: Duration,
+    ) -> Option<Message> {
+        let start = Instant::now();
+        let deadline = Instant::now() + overall;
+        let attempt = async {
+            for upstream in &upstreams {
+                if Instant::now() >= deadline {
+                    return None;
+                }
+                let remaining = deadline.saturating_duration_since(Instant::now());
+                let budget = per_attempt.min(remaining);
+                match self.forwarder.forward(query, upstream, budget).await {
+                    Ok(response) => {
+                        debug!("Upstream {} answered in {:?}",
+                            upstream_label(upstream), start.elapsed());
+                        return Some(response);
+                    }
+                    Err(e) => {
+                        debug!("Upstream {} failed: {} ({:?})",
+                            upstream_label(upstream), e, start.elapsed());
+                    }
+                }
+            }
+            None
+        };
+        // The outer timeout is the hard cap; cancelling the attempt drops any
+        // in-flight forward (safe: sockets and streams are closed on drop; a
+        // DoT query left in the pipeline is swept by its stale-pending timer).
+        tokio::time::timeout(overall, attempt).await.ok().flatten()
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn log_query(&self, query_log: bool, _id: u16, domain: &str, qtype: RecordType, client: &std::net::SocketAddr, status: i32, elapsed: Duration) {
         let stored = StoredQuery {
             timestamp: chrono::Utc::now().timestamp(),
             domain: domain.to_string(),
@@ -192,7 +248,7 @@ impl QueryRouter {
             upstream_id: None,
         };
         // Store query via background writer (if query_log is enabled)
-        if self.state.config.read().dns.query_log {
+        if query_log {
             if let Some(ref writer) = self.state.db_writer {
                 if let Err(e) = writer.store(stored) {
                     // Queue full (backpressure) or writer stopped — the query
@@ -722,5 +778,79 @@ mod tests {
         } else {
             panic!("expected A record (NULL fallback)");
         }
+    }
+
+    // ── Test 34: forward_attempt is bounded by an OVERALL deadline ────────
+    // A blackhole UDP endpoint accepts datagrams but never replies; TCP to the
+    // same port is refused. Without an overall deadline, two such upstreams
+    // would each burn the full per-attempt timeout (2× per_attempt); with the
+    // deadline the attempt must give up at ~overall regardless of per_attempt.
+    #[tokio::test]
+    async fn test_forward_attempt_bounded_by_overall_deadline() {
+        let blackhole = std::net::UdpSocket::bind("127.0.0.1:0").unwrap();
+        blackhole.set_nonblocking(true).unwrap();
+        let addr = blackhole.local_addr().unwrap();
+
+        let cfg = crate::config::Config {
+            dns: crate::config::DnsConfig {
+                upstreams: vec![
+                    crate::config::DnsUpstream::Plain { address: addr.ip(), port: addr.port() },
+                    crate::config::DnsUpstream::Plain { address: addr.ip(), port: addr.port() },
+                ],
+                ..Default::default()
+            },
+            database: crate::config::DatabaseConfig {
+                gravity_db: ":memory:".into(),
+                nimbus_db: ":memory:".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let upstreams = cfg.dns.upstreams.clone();
+        let db = crate::database::Database::open(&cfg.database).unwrap();
+        let state = std::sync::Arc::new(crate::AppState::new(cfg, db));
+        let blocking = std::sync::Arc::new(
+            crate::blocking::BlockingEngine::load(&state.database.gravity, &state.config.read()).unwrap(),
+        );
+        let cache = std::sync::Arc::new(DnsCache::new(100));
+        let dot = std::sync::Arc::new(DotManager::new());
+        let router = QueryRouter::new(state, cache, dot, blocking);
+
+        let query = query_a("deadline.test");
+        let start = std::time::Instant::now();
+        // per_attempt (1s) is far larger than the overall deadline (300ms);
+        // the sequential per-upstream loop would take ~2s.
+        let result = router
+            .forward_attempt(&query, upstreams, Duration::from_secs(1), Duration::from_millis(300))
+            .await;
+        assert!(result.is_none(), "blackhole upstreams must yield no response");
+        assert!(
+            start.elapsed() < Duration::from_millis(900),
+            "overall deadline must bound the attempt, took {:?}",
+            start.elapsed()
+        );
+    }
+
+    // ── RateLimiter: per-client QPS window ────────────────────────────────
+
+    #[test]
+    fn test_rate_limiter_allows_then_blocks_per_client() {
+        let limiter = RateLimiter::new(2);
+        let client: std::net::SocketAddr = "10.0.0.1:1234".parse().unwrap();
+        assert!(!limiter.is_rate_limited(&client), "1st within window");
+        assert!(!limiter.is_rate_limited(&client), "2nd within window");
+        assert!(limiter.is_rate_limited(&client), "3rd within window must be limited");
+        // A different client is not affected
+        let other: std::net::SocketAddr = "10.0.0.2:1234".parse().unwrap();
+        assert!(!limiter.is_rate_limited(&other));
+    }
+
+    #[test]
+    fn test_rate_limiter_single_slot() {
+        // max_qps = 1 → the 2nd call in the same window is limited
+        let limiter = RateLimiter::new(1);
+        let client: std::net::SocketAddr = "10.0.0.1:1234".parse().unwrap();
+        assert!(!limiter.is_rate_limited(&client));
+        assert!(limiter.is_rate_limited(&client));
     }
 }

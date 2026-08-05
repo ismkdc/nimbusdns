@@ -151,3 +151,49 @@ pub fn check_other_instance(pid_path: &Path) -> bool {
 pub fn check_other_instance(_pid_path: &Path) -> bool {
     false
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::PathBuf;
+
+    fn temp_pid(name: &str) -> PathBuf {
+        std::env::temp_dir().join(format!("nimbusdns-test-{}-{}", name, std::process::id()))
+    }
+
+    #[test]
+    fn test_save_and_remove_pid() {
+        let path = temp_pid("save");
+        let _ = fs::remove_file(&path);
+        save_pid(&path).unwrap();
+        assert_eq!(fs::read_to_string(&path).unwrap().trim(), std::process::id().to_string());
+        remove_pid(&path);
+        assert!(!path.exists(), "remove_pid must delete the file");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn test_check_other_instance() {
+        let missing = temp_pid("missing");
+        let _ = fs::remove_file(&missing);
+        assert!(!check_other_instance(&missing), "missing pid file → no other instance");
+
+        // Our own PID is alive → reports another instance
+        let own = temp_pid("own");
+        fs::write(&own, std::process::id().to_string()).unwrap();
+        assert!(check_other_instance(&own), "a live PID must be detected");
+
+        // Unreachable / garbage pid → not running
+        let stale = temp_pid("stale");
+        fs::write(&stale, "999999999").unwrap();
+        assert!(!check_other_instance(&stale));
+
+        let garbage = temp_pid("garbage");
+        fs::write(&garbage, "not-a-pid").unwrap();
+        assert!(!check_other_instance(&garbage));
+
+        for p in [own, stale, garbage, missing] {
+            let _ = fs::remove_file(p);
+        }
+    }
+}

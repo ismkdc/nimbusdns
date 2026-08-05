@@ -30,7 +30,7 @@ pub async fn start(
 ) -> anyhow::Result<DnsHandle> {
     // Scope the config read to drop the lock before any .await
     let dot_manager = Arc::new(DotManager::new());
-    let (cache_entries, bind_addr, upstream_count, dot_count, blocking) = {
+    let (cache_entries, bind_addr, max_concurrent_queries, upstream_count, dot_count, blocking) = {
         let config_guard = state.config.read();
         let dns = &config_guard.dns;
         // Use pre-loaded blocking engine from AppState if available,
@@ -42,7 +42,7 @@ pub async fn start(
         });
         info!("Blocking engine loaded ({} total blocked, mode: {:?})", 
               blocking.stats().total_blocked, blocking.mode());
-        (dns.cache_size, dns.bind, dns.upstreams.len(),
+        (dns.cache_size, dns.bind, dns.max_concurrent_queries, dns.upstreams.len(),
          dns.upstreams.iter().filter(|u| matches!(u, DnsUpstream::Tls { .. })).count(),
          blocking)
     };
@@ -62,7 +62,7 @@ pub async fn start(
     let router = Arc::new(router);
 
     // Start DNS listener with graceful shutdown support
-    listener::start(bind_addr, router.clone(), shutdown_rx.clone()).await?;
+    listener::start(bind_addr, router.clone(), max_concurrent_queries, shutdown_rx.clone()).await?;
 
     info!(
         "DNS listener started on {} ({} upstreams, {} DoT enabled)",
