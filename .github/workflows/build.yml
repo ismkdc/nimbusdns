@@ -63,7 +63,7 @@ jobs:
           sudo apt-get install -y -qq pkg-config libsqlite3-dev libssl-dev
 
       - name: Build
-        run: cargo build --release --target ${{ matrix.target }} --bin nimbusdns
+        run: cargo build --locked --release --target ${{ matrix.target }} --bin nimbusdns
 
       - name: Strip (Linux/macOS)
         if: runner.os != 'Windows'
@@ -86,7 +86,6 @@ jobs:
           name: nimbusdns-${{ matrix.suffix }}
           path: |
             nimbusdns-${{ matrix.suffix }}.tar.gz
-            nimbusdns-${{ matrix.suffix }}.zip
           if-no-files-found: error
 
   # -- Run tests ---------------------------------------------------------
@@ -109,13 +108,14 @@ jobs:
           sudo apt-get install -y -qq pkg-config libsqlite3-dev libssl-dev
 
       - name: Run tests
-        run: cargo test -p nimbus-core
+        run: cargo test --locked --workspace
 
       - name: Clippy
-        run: cargo clippy -p nimbus-core --tests -- -D warnings
+        run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
   # -- Build & push Docker image per arch (native, no QEMU) ------------
   docker:
+    needs: [test, build]
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
@@ -167,7 +167,7 @@ jobs:
   # -- Merge into multi-arch manifest ----------------------------------
   manifest:
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
-    needs: docker
+    needs: [docker, test]
     runs-on: ubuntu-24.04
     timeout-minutes: 5
     steps:
@@ -181,10 +181,22 @@ jobs:
 
       - name: Create multi-arch manifest
         run: |
-          docker buildx imagetools create \
-            --tag ismkdc/nimbusdns:latest \
-            docker.io/ismkdc/nimbusdns:latest-amd64 \
-            docker.io/ismkdc/nimbusdns:latest-arm64
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            version="${GITHUB_REF_NAME#v}"
+            minor="${version%.*}"
+            docker buildx imagetools create \
+              --tag "ismkdc/nimbusdns:$version" \
+              --tag "ismkdc/nimbusdns:v$version" \
+              --tag "ismkdc/nimbusdns:$minor" \
+              --tag ismkdc/nimbusdns:latest \
+              "docker.io/ismkdc/nimbusdns:$version-amd64" \
+              "docker.io/ismkdc/nimbusdns:$version-arm64"
+          else
+            docker buildx imagetools create \
+              --tag ismkdc/nimbusdns:latest \
+              docker.io/ismkdc/nimbusdns:latest-amd64 \
+              docker.io/ismkdc/nimbusdns:latest-arm64
+          fi
 
       - name: Update Docker Hub description
         uses: peter-evans/dockerhub-description@v5
@@ -198,9 +210,10 @@ jobs:
   # -- Create GitHub Release --------------------------------------------
   release:
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [build]
+    needs: [build, test, manifest]
     runs-on: ubuntu-24.04
     steps:
+      - uses: actions/checkout@v7
       - uses: actions/download-artifact@v8
         with:
           path: artifacts
@@ -209,6 +222,11 @@ jobs:
         run: |
           echo "## NimbusDNS ${{ github.ref_name }}" > notes.md
           echo "" >> notes.md
+          version="${GITHUB_REF_NAME#v}"
+          if [ -f "docs/releases/$version.md" ]; then
+            tail -n +2 "docs/releases/$version.md" >> notes.md
+            echo "" >> notes.md
+          fi
           echo "### 📥 Downloads" >> notes.md
           echo "" >> notes.md
           echo "| Platform | File |" >> notes.md
@@ -246,7 +264,8 @@ jobs:
         uses: softprops/action-gh-release@v3
         with:
           body_path: notes.md
-          files: artifacts/**/*.tar.gz,artifacts/**/*.zip
+          files: |
+            artifacts/**/*.tar.gz
           generate_release_notes: false
           draft: false
           prerelease: false

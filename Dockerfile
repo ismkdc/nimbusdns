@@ -7,7 +7,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY . .
-RUN cargo build --release --bin nimbusdns
+RUN cargo build --locked --release --bin nimbusdns
 
 FROM gcr.io/distroless/cc-debian13
 COPY --from=builder /etc/ssl/certs /etc/ssl/certs

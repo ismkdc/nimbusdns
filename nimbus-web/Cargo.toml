@@ -17,4 +17,4 @@ serde_json.workspace = true
 tracing.workspace = true
 anyhow.workspace = true
 chrono.workspace = true
-rust-embed = "8"
+rust-embed = "8.12.0"

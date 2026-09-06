@@ -13,14 +13,13 @@ use std::sync::Arc;
 
 const OFFER_TIMEOUT: i64 = 30; // seconds
 
-
 /// An outstanding offer: (expiry_timestamp, mac_address)
 type OfferEntry = (i64, [u8; 6]);
 
 use dhcproto::v4::{DhcpOptions, Message, MessageType, Opcode};
-use dhcproto::{Decodable, Encoder, Encodable};
-use nix::sys::socket::{sendmsg, ControlMessage, MsgFlags, SockaddrIn};
-use parking_lot::RwLock;
+use dhcproto::{Decodable, Encodable, Encoder};
+use nix::sys::socket::{ControlMessage, MsgFlags, SockaddrIn, sendmsg};
+use parking_lot::{Mutex, RwLock};
 use socket2::{Domain, Protocol, SockAddr, Socket, Type};
 use tokio::net::UdpSocket;
 use tokio::sync::watch;
@@ -34,11 +33,13 @@ const CLIENT_PORT: u16 = 68;
 /// Resolve interface name to kernel index (0 = auto).
 /// Returns libc::c_uint which matches if_nametoindex return type.
 fn resolve_ifindex(name: &Option<String>) -> libc::c_uint {
-    name.as_ref().and_then(|n| {
-        let c = std::ffi::CString::new(n.as_str()).ok()?;
-        let idx = unsafe { libc::if_nametoindex(c.as_ptr()) };
-        if idx == 0 { None } else { Some(idx) }
-    }).unwrap_or(0)
+    name.as_ref()
+        .and_then(|n| {
+            let c = std::ffi::CString::new(n.as_str()).ok()?;
+            let idx = unsafe { libc::if_nametoindex(c.as_ptr()) };
+            if idx == 0 { None } else { Some(idx) }
+        })
+        .unwrap_or(0)
 }
 
 /// Enable IP_PKTINFO on a socket so sendmsg can set source IP per packet.
@@ -46,19 +47,28 @@ fn enable_ip_pktinfo(fd: std::os::fd::RawFd) -> io::Result<()> {
     let enable: libc::c_int = 1;
     let r = unsafe {
         libc::setsockopt(
-            fd, libc::IPPROTO_IP, libc::IP_PKTINFO,
+            fd,
+            libc::IPPROTO_IP,
+            libc::IP_PKTINFO,
             &enable as *const _ as *const libc::c_void,
             std::mem::size_of::<libc::c_int>() as libc::socklen_t,
         )
     };
-    if r != 0 { Err(io::Error::last_os_error()) } else { Ok(()) }
+    if r != 0 {
+        Err(io::Error::last_os_error())
+    } else {
+        Ok(())
+    }
 }
 
 /// Send a DHCP datagram with explicit source IP (via IP_PKTINFO) so
 /// the IP header source matches ServerIdentifier for iOS compatibility.
 fn send_dhcp_pktinfo(
-    fd: std::os::fd::RawFd, bytes: &[u8],
-    dest: SocketAddrV4, src_ip: Ipv4Addr, ifindex: u32,
+    fd: std::os::fd::RawFd,
+    bytes: &[u8],
+    dest: SocketAddrV4,
+    src_ip: Ipv4Addr,
+    ifindex: u32,
 ) -> io::Result<usize> {
     let mut pktinfo: libc::in_pktinfo = unsafe { std::mem::zeroed() };
     pktinfo.ipi_ifindex = ifindex as _;
@@ -77,19 +87,17 @@ fn send_dhcp_pktinfo(
 
 /// Async wrapper for send_dhcp_pktinfo with retry on EAGAIN.
 async fn send_dhcp(
-    socket: &UdpSocket, bytes: &[u8],
-    dest: SocketAddrV4, src_ip: Ipv4Addr, ifindex: u32,
+    socket: &UdpSocket,
+    bytes: &[u8],
+    dest: SocketAddrV4,
+    src_ip: Ipv4Addr,
+    ifindex: u32,
 ) -> io::Result<usize> {
-    let fd = socket.as_raw_fd();
-    loop {
-        match send_dhcp_pktinfo(fd, bytes, dest, src_ip, ifindex) {
-            Ok(n) => return Ok(n),
-            Err(e) if e.kind() == io::ErrorKind::WouldBlock => {
-                socket.writable().await?;
-            }
-            Err(e) => return Err(e),
-        }
-    }
+    socket
+        .async_io(tokio::io::Interest::WRITABLE, || {
+            send_dhcp_pktinfo(socket.as_raw_fd(), bytes, dest, src_ip, ifindex)
+        })
+        .await
 }
 
 /// A DHCP lease entry
@@ -104,6 +112,10 @@ pub struct Lease {
 
 /// DHCP server state (pub for API access)
 pub struct DhcpServer {
+    /// Serializes a complete packet transaction against lease/offer reclamation.
+    mutation: Mutex<()>,
+    /// Conflicting addresses stay excluded until the server is restarted.
+    excluded: RwLock<HashSet<u32>>,
     config: Arc<RwLock<DhcpConfig>>,
     leases: Arc<RwLock<HashMap<[u8; 6], Lease>>>,
     pool: Arc<RwLock<IpPool>>,
@@ -121,7 +133,7 @@ impl DhcpServer {
     /// conflict (IP already leased to a different MAC with active lease).
     /// If the MAC moves to a new IP, the previous IP is released back to the
     /// pool so it can be reused (otherwise the pool silently drains).
-    pub fn try_commit_lease(
+    fn try_commit_lease(
         &self,
         mac: [u8; 6],
         ip: Ipv4Addr,
@@ -132,18 +144,34 @@ impl DhcpServer {
         let now = chrono::Utc::now().timestamp();
         // Capture the MAC's previous IP before overwriting the lease entry
         let old_ip = leases.get(&mac).map(|l| l.ip);
-        let conflict = leases.iter().any(|(&k, lease)| {
-            lease.ip == ip && k != mac && lease.expires_at > now
-        });
+        let conflict = leases
+            .iter()
+            .any(|(&k, lease)| lease.ip == ip && k != mac && lease.expires_at > now);
         if conflict {
             return false;
         }
-        leases.insert(mac, Lease { ip, mac, hostname, vendor: None, expires_at });
+        leases.insert(
+            mac,
+            Lease {
+                ip,
+                mac,
+                hostname,
+                vendor: None,
+                expires_at,
+            },
+        );
+        self.pool.write().mark_allocated(ip);
         // Release the old IP back into the pool on IP change
         if let Some(old) = old_ip
-            && old != ip {
-                self.pool.write().release(old);
-            }
+            && old != ip
+            && !leases
+                .values()
+                .any(|lease| lease.ip == old && lease.expires_at > now)
+            && !self.offered.read().contains_key(&u32::from(old))
+            && !self.excluded.read().contains(&u32::from(old))
+        {
+            self.pool.write().release(old);
+        }
         true
     }
 
@@ -153,23 +181,31 @@ impl DhcpServer {
     /// Without this, any client could "steal" an in-pool IP that was offered
     /// to (or leased to) a different MAC, or reuse an IP the server was told
     /// is already in use elsewhere.
-    pub fn can_client_request(&self, mac: [u8; 6], ip: Ipv4Addr) -> bool {
+    fn can_client_request(&self, mac: [u8; 6], ip: Ipv4Addr) -> bool {
         let now = chrono::Utc::now().timestamp();
+        if self.excluded.read().contains(&u32::from(ip)) {
+            return false;
+        }
         // A quarantined (declined) IP is never requestable, even if offered
         if let Some(until) = self.declined.read().get(&u32::from(ip))
-            && *until > now {
-                return false;
-            }
+            && *until > now
+        {
+            return false;
+        }
         // 1. Active lease for this MAC with this IP
         if let Some(lease) = self.leases.read().get(&mac)
-            && lease.ip == ip && lease.expires_at > now {
-                return true;
-            }
+            && lease.ip == ip
+            && lease.expires_at > now
+        {
+            return true;
+        }
         // 2. Active (non-expired) offer of this exact IP to this MAC
         if let Some((expiry, offer_mac)) = self.offered.read().get(&u32::from(ip))
-            && *offer_mac == mac && *expiry > now {
-                return true;
-            }
+            && *offer_mac == mac
+            && *expiry > now
+        {
+            return true;
+        }
         false
     }
 
@@ -178,8 +214,16 @@ impl DhcpServer {
     /// allocated so that once the quarantine expires it is NOT handed out
     /// again — otherwise a genuinely in-use IP (e.g. a static/VM host) causes
     /// an endless DISCOVER→OFFER→REQUEST→ACK→DECLINE loop.
-    pub fn handle_decline(&self, mac: [u8; 6], ip: Ipv4Addr, now: i64) {
+    fn handle_decline(&self, mac: [u8; 6], ip: Ipv4Addr, now: i64) {
+        if !self.can_client_request(mac, ip) {
+            warn!(
+                "DHCP DECLINE ignored: address {} was not assigned to {:?}",
+                ip, mac
+            );
+            return;
+        }
         let ip_u32 = u32::from(ip);
+        self.excluded.write().insert(ip_u32);
         // Short-term quarantine: skip it for 10 minutes
         self.declined.write().insert(ip_u32, now + 600);
         // PERMANENT: never offer this IP again (survives quarantine expiry).
@@ -188,8 +232,10 @@ impl DhcpServer {
         self.leases.write().remove(&mac);
         self.offered.write().remove(&ip_u32);
         delete_persisted_lease(self, &mac);
-        info!("DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (quarantined 10min, permanently skipped)",
-            ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        info!(
+            "DHCP DECLINE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (quarantined 10min, permanently skipped)",
+            ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]
+        );
     }
 }
 
@@ -237,7 +283,8 @@ impl IpPool {
 fn encode_message(msg: &Message) -> Result<Vec<u8>, String> {
     let mut buf = Vec::with_capacity(512);
     let mut encoder = Encoder::new(&mut buf);
-    msg.encode(&mut encoder).map_err(|e| format!("DHCP encode: {}", e))?;
+    msg.encode(&mut encoder)
+        .map_err(|e| format!("DHCP encode: {}", e))?;
     Ok(encoder.buffer_filled().to_vec())
 }
 
@@ -253,8 +300,12 @@ pub async fn start(
             info!("DHCP server is disabled in config");
             return None;
         }
-        (cfg.pool_start.unwrap_or_else(|| Ipv4Addr::new(192, 168, 1, 100)),
-         cfg.pool_end.unwrap_or_else(|| Ipv4Addr::new(192, 168, 1, 200)))
+        (
+            cfg.pool_start
+                .unwrap_or_else(|| Ipv4Addr::new(192, 168, 1, 100)),
+            cfg.pool_end
+                .unwrap_or_else(|| Ipv4Addr::new(192, 168, 1, 200)),
+        )
     };
 
     info!("DHCP server starting: pool {} - {}", pool_start, pool_end);
@@ -266,7 +317,10 @@ pub async fn start(
         let idx = resolve_ifindex(&cfg.interface);
         (ip, idx)
     };
-    info!("DHCP server starting: src_ip={}, ifindex={}", src_ip, ifindex);
+    info!(
+        "DHCP server starting: src_ip={}, ifindex={}",
+        src_ip, ifindex
+    );
 
     // Load persisted leases from DB on startup
     let leases_map = if let Some(ref db) = db {
@@ -281,6 +335,8 @@ pub async fn start(
     }
 
     let server = Arc::new(DhcpServer {
+        mutation: Mutex::new(()),
+        excluded: RwLock::new(HashSet::new()),
         config,
         leases: Arc::new(RwLock::new(leases_map)),
         pool,
@@ -293,28 +349,40 @@ pub async fn start(
     let socket = {
         let sock = match Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP)) {
             Ok(s) => s,
-            Err(e) => { warn!("DHCP socket create: {}", e); return None; }
+            Err(e) => {
+                warn!("DHCP socket create: {}", e);
+                return None;
+            }
         };
         let _ = sock.set_reuse_address(true);
         let _ = sock.set_broadcast(true);
         if let Err(e) = sock.set_nonblocking(true) {
-            warn!("DHCP set_nonblocking: {}", e); return None;
+            warn!("DHCP set_nonblocking: {}", e);
+            return None;
         }
         let bind_addr = SocketAddrV4::new(Ipv4Addr::UNSPECIFIED, SERVER_PORT);
         if let Err(e) = sock.bind(&SockAddr::from(bind_addr)) {
-            warn!("DHCP bind {}: {}", bind_addr, e); return None;
+            warn!("DHCP bind {}: {}", bind_addr, e);
+            return None;
         }
         // Enable IP_PKTINFO so sendmsg can set source IP per-packet
         let std_sock: std::net::UdpSocket = sock.into();
         if let Err(e) = enable_ip_pktinfo(std_sock.as_raw_fd()) {
-            warn!("DHCP IP_PKTINFO: {}", e); return None;
+            warn!("DHCP IP_PKTINFO: {}", e);
+            return None;
         }
         match tokio::net::UdpSocket::from_std(std_sock) {
             Ok(s) => {
-                info!("DHCP listening on 0.0.0.0:{} (IP_PKTINFO, src={})", SERVER_PORT, src_ip);
+                info!(
+                    "DHCP listening on 0.0.0.0:{} (IP_PKTINFO, src={})",
+                    SERVER_PORT, src_ip
+                );
                 Arc::new(s)
             }
-            Err(e) => { warn!("DHCP from_std: {}", e); return None; }
+            Err(e) => {
+                warn!("DHCP from_std: {}", e);
+                return None;
+            }
         }
     };
 
@@ -363,221 +431,212 @@ async fn handle_dhcp_packet(
     server: Arc<DhcpServer>,
     socket: Arc<UdpSocket>,
     data: Vec<u8>,
-    _src: std::net::SocketAddr,
+    src: std::net::SocketAddr,
     src_ip: Ipv4Addr,
     ifindex: u32,
 ) {
     let mut decoder = dhcproto::Decoder::new(&data);
     let msg = match Message::decode(&mut decoder) {
-        Ok(m) => m,
+        Ok(msg) if msg.opcode() == Opcode::BootRequest && msg.chaddr().len() == 6 => msg,
+        Ok(_) => return,
         Err(e) => {
-            warn!("DHCP failed to decode message: {:?}", e);
+            warn!("DHCP decode error from {}: {}", src, e);
             return;
         }
     };
-
-    let chaddr = msg.chaddr();
-    if chaddr.len() < 6 { return; }
-    let mut mac = [0u8; 6];
-    mac.copy_from_slice(&chaddr[..6]);
-
-    let msg_type = match msg.opts().get(dhcproto::v4::OptionCode::MessageType) {
-        Some(dhcproto::v4::DhcpOption::MessageType(mt)) => *mt,
-        _ => {
-            warn!("DHCP message missing MessageType option");
+    debug!(
+        "DHCP request src={} xid={} ciaddr={} giaddr={} options={:?}",
+        src,
+        msg.xid(),
+        msg.ciaddr(),
+        msg.giaddr(),
+        msg.opts()
+    );
+    let response = tokio::task::spawn_blocking(move || process_dhcp_message(&server, &msg)).await;
+    let response = match response {
+        Ok(Some(response)) => response,
+        Ok(None) => return,
+        Err(e) => {
+            warn!("DHCP processing failed: {}", e);
             return;
         }
     };
+    let dest = response_destination(&response);
+    let bytes = match encode_message(&response) {
+        Ok(bytes) => bytes,
+        Err(e) => {
+            warn!("{}", e);
+            return;
+        }
+    };
+    let kind = response.opts().get(dhcproto::v4::OptionCode::MessageType);
+    if let Err(e) = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await {
+        warn!("DHCP {:?} send error to {}: {}", kind, dest, e);
+    } else {
+        info!(
+            "DHCP {:?} ip={} mac={:02x?} xid={} destination={}",
+            kind,
+            response.yiaddr(),
+            response.chaddr(),
+            response.xid(),
+            dest
+        );
+    }
+}
 
-    // Packet-level debug logging: show every incoming message with its MAC,
-    // requested/current IP and relay gateway so we can trace the DORA flow.
-    let requested_opt = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
-        .and_then(|o| match o {
-            dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
-            _ => None,
-        });
-    debug!("DHCP << {:?} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (ciaddr={}, requested={:?}, giaddr={}, src={})",
-        msg_type, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5],
-        msg.ciaddr(), requested_opt, msg.giaddr(), src_ip);
-
-    match msg_type {
+/// Process one transaction without network I/O. All state and persistence changes
+/// happen under the same lock on a blocking worker, before emitting the reply.
+fn process_dhcp_message(server: &DhcpServer, msg: &Message) -> Option<Message> {
+    if msg.opcode() != Opcode::BootRequest || msg.chaddr().len() != 6 {
+        return None;
+    }
+    let mac: [u8; 6] = msg.chaddr().try_into().ok()?;
+    let kind = match msg.opts().get(dhcproto::v4::OptionCode::MessageType)? {
+        dhcproto::v4::DhcpOption::MessageType(kind) => *kind,
+        _ => return None,
+    };
+    let cfg = server.config.read().clone();
+    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let selected = match msg.opts().get(dhcproto::v4::OptionCode::ServerIdentifier) {
+        Some(dhcproto::v4::DhcpOption::ServerIdentifier(ip)) => Some(*ip),
+        _ => None,
+    };
+    // SELECTING requests are broadcast to all servers, but only the selected
+    // server may ACK/NAK. RELEASE and DECLINE also identify their server.
+    if selected.is_some_and(|ip| ip != sid) {
+        return None;
+    }
+    let requested = match msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress) {
+        Some(dhcproto::v4::DhcpOption::RequestedIpAddress(ip)) => Some(*ip),
+        _ => None,
+    };
+    let _transaction = server.mutation.lock();
+    reclaim_expired_locked(server);
+    match kind {
         MessageType::Discover => {
             let now = chrono::Utc::now().timestamp();
-            // Atomically: check lease → check offered → allocate under offered.write() lock
-            let (offered_ip, _is_new) = {
-                let leases = server.leases.read();
-                if let Some(l) = leases.get(&mac) {
-                    (Some(l.ip), false)
-                } else {
-                    let mut offers = server.offered.write();
-                    // Check for existing non-expired offer to this MAC
-                    let existing = offers.iter().find(|(_, val)| val.1 == mac && val.0 > now)
-                        .map(|(&ip, _)| ip);
-                    match existing {
-                        Some(ip) => {
-                            // Refresh TTL on reuse
-                            offers.insert(ip, (now + OFFER_TIMEOUT, mac));
-                            (Some(Ipv4Addr::from(ip)), false)
-                        }
-                        None => {
-                            // Allocate new IP
-                            let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
-                            if let Some(ip) = server.pool.write().next_available(&declined) {
-                                let ip_u32 = u32::from(ip);
-                                offers.insert(ip_u32, (now + OFFER_TIMEOUT, mac));
-                                (Some(ip), true)
-                            } else {
-                                (None, false)
+            let existing = server
+                .leases
+                .read()
+                .get(&mac)
+                .filter(|l| l.expires_at > now)
+                .map(|l| l.ip);
+            let ip = if let Some(ip) = existing {
+                ip
+            } else {
+                let mut offers = server.offered.write();
+                let existing = offers
+                    .iter()
+                    .find(|(_, entry)| entry.1 == mac && entry.0 > now)
+                    .map(|(&ip, _)| Ipv4Addr::from(ip));
+                let ip = match existing {
+                    Some(ip) => ip,
+                    None => {
+                        let excluded = server.excluded.read();
+                        match server.pool.write().next_available(&excluded) {
+                            Some(ip) => ip,
+                            None => {
+                                warn!("DHCP pool exhausted for {:02x?}", mac);
+                                return None;
                             }
                         }
                     }
-                }
+                };
+                offers.insert(u32::from(ip), (now + OFFER_TIMEOUT, mac));
+                ip
             };
-            match offered_ip {
-                Some(ip) => {
-                    let response = build_offer(&msg, ip, &server);
-                    match encode_message(&response) {
-                        Ok(bytes) => {
-                            let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
-                            if let Err(e) = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await {
-                                warn!("DHCP OFFER send error: {}", e);
-                            } else {
-                                info!("DHCP OFFER {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                                    ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                            }
-                        }
-                        Err(e) => warn!("DHCP encode OFFER error: {}", e),
-                    }
-                }
-                None => warn!("DHCP no available IP for {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]),
-            }
+            // Even a reused lease gets an offer reservation: it may expire
+            // between DISCOVER and REQUEST.
+            server
+                .offered
+                .write()
+                .insert(u32::from(ip), (now + OFFER_TIMEOUT, mac));
+            Some(build_offer(msg, ip, server))
         }
         MessageType::Request => {
-            // SELECTING (initial): client provides RequestedIpAddress option
-            // RENEWING/REBINDING: client sets ciaddr, no RequestedIpAddress
-            let requested_ip = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
-                .and_then(|o| match o {
-                    dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
-                    _ => None,
-                }).or_else(|| {
-                    let ciaddr = msg.ciaddr();
-                    if ciaddr != Ipv4Addr::UNSPECIFIED { Some(ciaddr) } else { None }
-                });
-
-            if let Some(ip) = requested_ip {
-                // Validate: IP must be in pool range
-                let valid = { server.pool.read().contains(ip) };
-
-                if !valid {
-                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP not in pool)",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                    let nak = build_nak(&msg, &server);
-                    if let Ok(bytes) = encode_message(&nak) {
-                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
-                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
-                    }
-                    return;
-                }
-
-                // RFC 2131 §4.3.2: the requested IP must have been offered to
-                // this MAC (or be this MAC's own lease). Reject a client that
-                // tries to claim an IP offered/leased to a different MAC.
-                if !server.can_client_request(mac, ip) {
-                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP not offered to this MAC)",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                    let nak = build_nak(&msg, &server);
-                    if let Ok(bytes) = encode_message(&nak) {
-                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
-                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
-                    }
-                    return;
-                }
-
-                let (_lease_time, expires, hostname) = {
-                    let cfg = server.config.read();
-                    let lt = cfg.lease_time;
-                    let host = msg.opts().get(dhcproto::v4::OptionCode::Hostname)
-                        .and_then(|o| match o {
-                            dhcproto::v4::DhcpOption::Hostname(h) => Some(h.clone()),
-                            _ => None,
-                        });
-                    (lt, chrono::Utc::now().timestamp() + lt as i64, host)
-                };
-
-                // Atomically: conflict-check + lease-insert under a single write lock.
-                if !server.try_commit_lease(mac, ip, expires, hostname.clone()) {
-                    warn!("DHCP NAK for {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP conflict)",
-                        ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                    let nak = build_nak(&msg, &server);
-                    if let Ok(bytes) = encode_message(&nak) {
-                        let dest = SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT);
-                        let _ = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await;
-                    }
-                    return;
-                }
-
-                // Sync pool: mark IP as allocated (in case it was free)
-                server.pool.write().mark_allocated(ip);
-                // Remove from offered table (if it was an initial offer)
-                server.offered.write().remove(&u32::from(ip));
-                persist_lease(&server, &mac, ip, &hostname, expires);
-
-                let response = build_ack(&msg, ip, &server);
-                if let Ok(bytes) = encode_message(&response) {
-                    // If client set broadcast flag, always broadcast regardless of ciaddr
-                    let flags: u16 = msg.flags().into();
-                    let broadcast_flag = flags & 0x8000 != 0;
-                    let dest = if !broadcast_flag && msg.ciaddr() != Ipv4Addr::UNSPECIFIED {
-                        SocketAddrV4::new(msg.ciaddr(), CLIENT_PORT)
-                    } else {
-                        SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
-                    };
-                    if let Err(e) = send_dhcp(&socket, &bytes, dest, src_ip, ifindex).await {
-                        warn!("DHCP ACK send error: {}", e);
-                    } else {
-                        info!("DHCP ACK {} to {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                            ip, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-                    }
-                }
+            let ciaddr = msg.ciaddr();
+            if selected.is_some() && (requested.is_none() || !ciaddr.is_unspecified()) {
+                return None;
             }
+            if !ciaddr.is_unspecified() && requested.is_some() {
+                return None;
+            }
+            let ip = requested.or_else(|| (!ciaddr.is_unspecified()).then_some(ciaddr))?;
+            // INIT-REBOOT: an unknown client on our subnet must not receive a
+            // destructive NAK merely because its lease is not in our database.
+            let subnet_matches = (u32::from(ip) & u32::from(cfg.netmask))
+                == (u32::from(sid) & u32::from(cfg.netmask));
+            if selected.is_none()
+                && ciaddr.is_unspecified()
+                && subnet_matches
+                && !server.leases.read().contains_key(&mac)
+            {
+                return None;
+            }
+            if !server.pool.read().contains(ip) || !server.can_client_request(mac, ip) {
+                warn!(
+                    "DHCP NAK ip={} mac={:02x?} xid={} (no valid offer/lease)",
+                    ip,
+                    mac,
+                    msg.xid()
+                );
+                return Some(build_nak(msg, server));
+            }
+            let hostname = match msg.opts().get(dhcproto::v4::OptionCode::Hostname) {
+                Some(dhcproto::v4::DhcpOption::Hostname(host)) => Some(host.clone()),
+                _ => server
+                    .leases
+                    .read()
+                    .get(&mac)
+                    .and_then(|l| l.hostname.clone()),
+            };
+            let expires = chrono::Utc::now().timestamp() + i64::from(cfg.lease_time);
+            if !server.try_commit_lease(mac, ip, expires, hostname.clone()) {
+                warn!("DHCP NAK ip={} mac={:02x?} (IP conflict)", ip, mac);
+                return Some(build_nak(msg, server));
+            }
+            server.pool.write().mark_allocated(ip);
+            server.offered.write().remove(&u32::from(ip));
+            persist_lease(server, &mac, ip, &hostname, expires);
+            Some(build_ack(msg, ip, server))
         }
         MessageType::Release => {
-            let ciaddr = msg.ciaddr();
-            // RFC 2131 §4.3.2: only release an IP that is this MAC's own
-            // active lease. Otherwise a malicious client could free an IP
-            // currently leased to a different MAC, enabling double-allocation.
-            let owns_lease = {
-                let leases = server.leases.read();
-                leases.get(&mac).map(|l| l.ip == ciaddr).unwrap_or(false)
-            };
-            if ciaddr != Ipv4Addr::UNSPECIFIED && owns_lease {
-                server.pool.write().release(ciaddr);
+            let ip = msg.ciaddr();
+            let owns = server.leases.read().get(&mac).is_some_and(|l| l.ip == ip);
+            if owns && !ip.is_unspecified() {
                 server.leases.write().remove(&mac);
-                delete_persisted_lease(&server, &mac);
-                debug!("DHCP RELEASE {} from {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x}",
-                    ciaddr, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-            } else {
-                debug!("DHCP RELEASE ignored for {:02x}:{:02x}:{:02x}:{:02x}:{:02x}:{:02x} (IP {} not owned by this MAC)",
-                    mac[0], mac[1], mac[2], mac[3], mac[4], mac[5], ciaddr);
+                server.offered.write().retain(|_, entry| entry.1 != mac);
+                if !server.excluded.read().contains(&u32::from(ip)) {
+                    server.pool.write().release(ip);
+                }
+                delete_persisted_lease(server, &mac);
             }
+            None
         }
         MessageType::Decline => {
-            // Windows sends DECLINE when ARP probe finds a conflict (RFC 2131 §4.3.3)
-            // The rejected IP is in RequestedIpAddress option (Option 50), NOT ciaddr
-            let declined_ip = msg.opts().get(dhcproto::v4::OptionCode::RequestedIpAddress)
-                .and_then(|o| match o {
-                    dhcproto::v4::DhcpOption::RequestedIpAddress(ip) => Some(*ip),
-                    _ => None,
-                }).or_else(|| {
-                    let ciaddr = msg.ciaddr();
-                    if ciaddr != Ipv4Addr::UNSPECIFIED { Some(ciaddr) } else { None }
-                });
-            if let Some(ip) = declined_ip {
+            if let Some(ip) = requested {
                 server.handle_decline(mac, ip, chrono::Utc::now().timestamp());
             }
+            None
         }
-        _ => {}
+        _ => None,
+    }
+}
+
+fn response_destination(response: &Message) -> SocketAddrV4 {
+    if !response.giaddr().is_unspecified() {
+        return SocketAddrV4::new(response.giaddr(), SERVER_PORT);
+    }
+    let is_nak = matches!(
+        response.opts().get(dhcproto::v4::OptionCode::MessageType),
+        Some(dhcproto::v4::DhcpOption::MessageType(MessageType::Nak))
+    );
+    if !is_nak && !response.ciaddr().is_unspecified() {
+        SocketAddrV4::new(response.ciaddr(), CLIENT_PORT)
+    } else {
+        // Without a configured client address, use broadcast rather than an
+        // IP unicast that would require resolving an unconfigured host by ARP.
+        SocketAddrV4::new(Ipv4Addr::BROADCAST, CLIENT_PORT)
     }
 }
 
@@ -599,6 +658,8 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
     msg.set_opcode(Opcode::BootReply);
     // Use client's broadcast flag (don't force broadcast)
     msg.set_flags(discover.flags());
+    msg.set_giaddr(discover.giaddr());
+    msg.set_ciaddr(discover.ciaddr());
 
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Offer));
@@ -611,10 +672,14 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
         opts.insert(dhcproto::v4::DhcpOption::DomainNameServer(vec![sid]));
     }
     // Always send Router option (use sid as fallback)
-    opts.insert(dhcproto::v4::DhcpOption::Router(vec![cfg.router.unwrap_or(sid)]));
+    opts.insert(dhcproto::v4::DhcpOption::Router(vec![
+        cfg.router.unwrap_or(sid),
+    ]));
     opts.insert(dhcproto::v4::DhcpOption::AddressLeaseTime(cfg.lease_time));
     opts.insert(dhcproto::v4::DhcpOption::Renewal(cfg.lease_time / 2));
-    opts.insert(dhcproto::v4::DhcpOption::Rebinding((cfg.lease_time * 3) / 4));
+    opts.insert(dhcproto::v4::DhcpOption::Rebinding(
+        ((u64::from(cfg.lease_time) * 7) / 8) as u32,
+    ));
     if let Some(ref domain) = cfg.domain {
         opts.insert(dhcproto::v4::DhcpOption::DomainName(domain.clone()));
     }
@@ -630,6 +695,8 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     msg.set_opcode(Opcode::BootReply);
     // Use client's broadcast flag
     msg.set_flags(request.flags());
+    msg.set_giaddr(request.giaddr());
+    msg.set_ciaddr(request.ciaddr());
 
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Ack));
@@ -642,10 +709,14 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
         opts.insert(dhcproto::v4::DhcpOption::DomainNameServer(vec![sid]));
     }
     // Always send Router option (use sid as fallback)
-    opts.insert(dhcproto::v4::DhcpOption::Router(vec![cfg.router.unwrap_or(sid)]));
+    opts.insert(dhcproto::v4::DhcpOption::Router(vec![
+        cfg.router.unwrap_or(sid),
+    ]));
     opts.insert(dhcproto::v4::DhcpOption::AddressLeaseTime(cfg.lease_time));
     opts.insert(dhcproto::v4::DhcpOption::Renewal(cfg.lease_time / 2));
-    opts.insert(dhcproto::v4::DhcpOption::Rebinding((cfg.lease_time * 3) / 4));
+    opts.insert(dhcproto::v4::DhcpOption::Rebinding(
+        ((u64::from(cfg.lease_time) * 7) / 8) as u32,
+    ));
     if let Some(ref domain) = cfg.domain {
         opts.insert(dhcproto::v4::DhcpOption::DomainName(domain.clone()));
     }
@@ -657,9 +728,16 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
 fn build_nak(request: &Message, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
     let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
-    let mut msg = make_msg(request.xid(), Ipv4Addr::UNSPECIFIED, sid, &request.chaddr()[..6]);
+    let mut msg = make_msg(
+        request.xid(),
+        Ipv4Addr::UNSPECIFIED,
+        sid,
+        &request.chaddr()[..6],
+    );
     msg.set_opcode(Opcode::BootReply);
     msg.set_flags(request.flags());
+    msg.set_giaddr(request.giaddr());
+    msg.set_ciaddr(request.ciaddr());
     let mut opts = DhcpOptions::new();
     opts.insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Nak));
     opts.insert(dhcproto::v4::DhcpOption::ServerIdentifier(sid));
@@ -670,6 +748,11 @@ fn build_nak(request: &Message, server: &DhcpServer) -> Message {
 
 /// Reclaim expired leases and offered IPs (call periodically from check.tick)
 fn reclaim_expired(server: &DhcpServer) {
+    let _transaction = server.mutation.lock();
+    reclaim_expired_locked(server);
+}
+
+fn reclaim_expired_locked(server: &DhcpServer) {
     let now = chrono::Utc::now().timestamp();
 
     // 1. Clean expired leases
@@ -695,7 +778,10 @@ fn reclaim_expired(server: &DhcpServer) {
         };
         let mut pool = server.pool.write();
         for ip in &expired_ips {
-            if !active_ips.contains(ip) {
+            if !active_ips.contains(ip)
+                && !server.offered.read().contains_key(ip)
+                && !server.excluded.read().contains(ip)
+            {
                 pool.release(Ipv4Addr::from(*ip));
             }
         }
@@ -718,7 +804,15 @@ fn reclaim_expired(server: &DhcpServer) {
     if !expired_offers.is_empty() {
         let mut pool = server.pool.write();
         for ip in &expired_offers {
-            pool.release(Ipv4Addr::from(*ip));
+            if !server
+                .leases
+                .read()
+                .values()
+                .any(|lease| u32::from(lease.ip) == *ip && lease.expires_at > now)
+                && !server.excluded.read().contains(ip)
+            {
+                pool.release(Ipv4Addr::from(*ip));
+            }
         }
         debug!("DHCP reclaimed {} expired offers", expired_offers.len());
     }
@@ -737,26 +831,42 @@ fn reclaim_expired(server: &DhcpServer) {
         });
     }
     if !expired_declined.is_empty() {
-        let mut pool = server.pool.write();
-        for ip in &expired_declined {
-            pool.release(Ipv4Addr::from(*ip));
-        }
-        debug!("DHCP reclaimed {} expired declined IPs", expired_declined.len());
+        // Quarantine metadata expires; confirmed conflicts remain excluded.
+        debug!(
+            "DHCP reclaimed {} expired declined IPs",
+            expired_declined.len()
+        );
     }
 }
 
 /// Persist a lease to the database. Runs on the blocking pool so the tokio
 /// worker thread that processed the DHCP packet is never blocked by SQLite
 /// I/O (P2).
-fn persist_lease(server: &DhcpServer, mac: &[u8; 6], ip: Ipv4Addr, hostname: &Option<String>, expires_at: i64) {
+fn persist_lease(
+    server: &DhcpServer,
+    mac: &[u8; 6],
+    ip: Ipv4Addr,
+    hostname: &Option<String>,
+    expires_at: i64,
+) {
     if let Some(ref db) = server.db {
         let db = db.clone();
-        let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
+        let mac_str = mac
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(":");
         let ip_u32 = u32::from(ip);
         let hostname_str = hostname.clone().unwrap_or_default();
-        tokio::task::spawn_blocking(move || {
-            let _ = crate::database::queries::persist_dhcp_lease(&db, &mac_str, ip_u32, &hostname_str, expires_at);
-        });
+        if let Err(e) = crate::database::queries::persist_dhcp_lease(
+            &db,
+            &mac_str,
+            ip_u32,
+            &hostname_str,
+            expires_at,
+        ) {
+            warn!("DHCP lease persistence failed for {}: {}", mac_str, e);
+        }
     }
 }
 
@@ -764,38 +874,60 @@ fn persist_lease(server: &DhcpServer, mac: &[u8; 6], ip: Ipv4Addr, hostname: &Op
 fn delete_persisted_lease(server: &DhcpServer, mac: &[u8; 6]) {
     if let Some(ref db) = server.db {
         let db = db.clone();
-        let mac_str = mac.iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(":");
-        tokio::task::spawn_blocking(move || {
-            let _ = crate::database::queries::delete_dhcp_lease(&db, &mac_str);
-        });
+        let mac_str = mac
+            .iter()
+            .map(|b| format!("{:02x}", b))
+            .collect::<Vec<_>>()
+            .join(":");
+        if let Err(e) = crate::database::queries::delete_dhcp_lease(&db, &mac_str) {
+            warn!("DHCP lease deletion failed for {}: {}", mac_str, e);
+        }
     }
 }
 
 /// Load persisted leases from database, filtering out expired ones
-fn load_persisted_leases(db: &Arc<crate::database::queries::QueryDb>, pool_start: Ipv4Addr, pool_end: Ipv4Addr) -> HashMap<[u8; 6], Lease> {
+fn load_persisted_leases(
+    db: &Arc<crate::database::queries::QueryDb>,
+    pool_start: Ipv4Addr,
+    pool_end: Ipv4Addr,
+) -> HashMap<[u8; 6], Lease> {
     // Ensure the table exists
     let _ = crate::database::queries::ensure_dhcp_leases_table(db);
     let now = chrono::Utc::now().timestamp();
     let mut leases = HashMap::new();
     if let Ok(rows) = crate::database::queries::load_dhcp_leases(db) {
         for (mac_str, ip_u32, hostname, expires_at) in rows {
-            if expires_at <= now { continue; }
+            if expires_at <= now {
+                continue;
+            }
             let ip = Ipv4Addr::from(ip_u32);
-            if ip < pool_start || ip > pool_end { continue; }
-            let mac: [u8; 6] = mac_str.split(':')
+            if ip < pool_start || ip > pool_end {
+                continue;
+            }
+            let mac: [u8; 6] = mac_str
+                .split(':')
                 .filter_map(|b| u8::from_str_radix(b, 16).ok())
                 .collect::<Vec<_>>()
                 .try_into()
                 .ok()
                 .unwrap_or_default();
-            if mac == [0u8; 6] { continue; }
-            leases.insert(mac, Lease {
-                ip,
+            if mac == [0u8; 6] {
+                continue;
+            }
+            leases.insert(
                 mac,
-                hostname: if hostname.is_empty() { None } else { Some(hostname) },
-                vendor: None,
-                expires_at,
-            });
+                Lease {
+                    ip,
+                    mac,
+                    hostname: if hostname.is_empty() {
+                        None
+                    } else {
+                        Some(hostname)
+                    },
+                    vendor: None,
+                    expires_at,
+                },
+            );
         }
     }
     info!("Loaded {} persisted DHCP leases", leases.len());
@@ -811,7 +943,12 @@ pub fn get_leases(server: &DhcpServer) -> Vec<Lease> {
 pub fn get_lease_count(server: &DhcpServer) -> usize {
     let now = chrono::Utc::now().timestamp();
     reclaim_expired(server);
-    server.leases.read().values().filter(|l| l.expires_at > now).count()
+    server
+        .leases
+        .read()
+        .values()
+        .filter(|l| l.expires_at > now)
+        .count()
 }
 
 // =============================================================================
@@ -827,11 +964,17 @@ mod tests {
         IpPool::new(start.parse().unwrap(), end.parse().unwrap())
     }
 
-    fn ip(s: &str) -> Ipv4Addr { s.parse().unwrap() }
-    fn ipu(s: &str) -> u32 { u32::from(ip(s)) }
+    fn ip(s: &str) -> Ipv4Addr {
+        s.parse().unwrap()
+    }
+    fn ipu(s: &str) -> u32 {
+        u32::from(ip(s))
+    }
 
     fn make_server() -> DhcpServer {
         DhcpServer {
+            mutation: Mutex::new(()),
+            excluded: RwLock::new(HashSet::new()),
             config: Arc::new(RwLock::new(crate::config::DhcpConfig {
                 router: Some(ip("192.168.1.1")),
                 netmask: ip("255.255.255.0"),
@@ -858,11 +1001,227 @@ mod tests {
         [0x02, 0x00, 0x00, a, b, 0x00]
     }
 
+    fn request_for(discover: &Message, addr: Ipv4Addr, server_id: Option<Ipv4Addr>) -> Message {
+        let mut request = discover.clone();
+        request
+            .opts_mut()
+            .insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Request));
+        request
+            .opts_mut()
+            .insert(dhcproto::v4::DhcpOption::RequestedIpAddress(addr));
+        if let Some(sid) = server_id {
+            request
+                .opts_mut()
+                .insert(dhcproto::v4::DhcpOption::ServerIdentifier(sid));
+        }
+        request
+    }
+
+    fn assert_kind(msg: &Message, expected: MessageType) {
+        assert!(
+            matches!(msg.opts().get(dhcproto::v4::OptionCode::MessageType),
+            Some(dhcproto::v4::DhcpOption::MessageType(kind)) if *kind == expected)
+        );
+    }
+
+    #[test]
+    fn selecting_another_server_is_silent_even_for_invalid_ip() {
+        let server = make_server();
+        let discover = sample_discover();
+        let offer = process_dhcp_message(&server, &discover).unwrap();
+        for addr in [offer.yiaddr(), ip("10.99.0.2")] {
+            let request = request_for(&discover, addr, Some(ip("192.168.1.2")));
+            assert!(process_dhcp_message(&server, &request).is_none());
+        }
+        assert!(server.leases.read().is_empty());
+    }
+
+    #[test]
+    fn unknown_init_reboot_is_silent_on_same_subnet() {
+        let server = make_server();
+        let request = request_for(&sample_discover(), ip("192.168.1.150"), None);
+        assert!(process_dhcp_message(&server, &request).is_none());
+        let request = request_for(&sample_discover(), ip("10.99.0.2"), None);
+        assert_kind(
+            &process_dhcp_message(&server, &request).unwrap(),
+            MessageType::Nak,
+        );
+    }
+
+    #[test]
+    fn expired_lease_discover_receives_requestable_offer() {
+        let server = make_server();
+        let discover = sample_discover();
+        let mac = discover.chaddr().try_into().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        assert!(server.try_commit_lease(mac, ip("192.168.1.100"), now - 1, None));
+        server.pool.write().mark_allocated(ip("192.168.1.100"));
+        let offer = process_dhcp_message(&server, &discover).unwrap();
+        let request = request_for(&discover, offer.yiaddr(), Some(ip("192.168.1.1")));
+        assert_kind(
+            &process_dhcp_message(&server, &request).unwrap(),
+            MessageType::Ack,
+        );
+    }
+
+    #[test]
+    fn reused_lease_offer_survives_lease_expiry() {
+        let server = make_server();
+        let discover = sample_discover();
+        let mac = discover.chaddr().try_into().unwrap();
+        let now = chrono::Utc::now().timestamp();
+        assert!(server.try_commit_lease(mac, ip("192.168.1.100"), now + 10, None));
+        let offer = process_dhcp_message(&server, &discover).unwrap();
+        server.leases.write().get_mut(&mac).unwrap().expires_at = now - 1;
+        reclaim_expired(&server);
+        assert!(server.can_client_request(mac, offer.yiaddr()));
+        assert_ne!(
+            server.pool.write().next_available(&HashSet::new()),
+            Some(offer.yiaddr())
+        );
+        let request = request_for(&discover, offer.yiaddr(), Some(ip("192.168.1.1")));
+        assert_kind(
+            &process_dhcp_message(&server, &request).unwrap(),
+            MessageType::Ack,
+        );
+    }
+
+    #[test]
+    fn expired_offer_does_not_free_committed_lease() {
+        let server = make_server();
+        let addr = ip("192.168.1.100");
+        let now = chrono::Utc::now().timestamp();
+        server
+            .offered
+            .write()
+            .insert(u32::from(addr), (now - 1, mac(1, 1)));
+        server.pool.write().mark_allocated(addr);
+        assert!(server.try_commit_lease(mac(1, 1), addr, now + 86400, None));
+        reclaim_expired(&server);
+        assert_ne!(
+            server.pool.write().next_available(&HashSet::new()),
+            Some(addr)
+        );
+    }
+
+    #[test]
+    fn lease_move_does_not_free_another_clients_active_ip() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        let addr = ip("192.168.1.100");
+        assert!(server.try_commit_lease(mac(1, 1), addr, now - 1, None));
+        assert!(server.try_commit_lease(mac(2, 2), addr, now + 86400, None));
+        server.pool.write().mark_allocated(addr);
+        assert!(server.try_commit_lease(mac(1, 1), ip("192.168.1.101"), now + 86400, None));
+        assert_ne!(
+            server.pool.write().next_available(&HashSet::new()),
+            Some(addr)
+        );
+    }
+
+    #[test]
+    fn unowned_decline_cannot_delete_valid_lease_or_quarantine_address() {
+        let server = make_server();
+        let now = chrono::Utc::now().timestamp();
+        let addr = ip("192.168.1.100");
+        assert!(server.try_commit_lease(mac(1, 1), addr, now + 86400, None));
+        server.handle_decline(mac(1, 1), ip("192.168.1.150"), now);
+        assert!(server.can_client_request(mac(1, 1), addr));
+        assert!(server.declined.read().is_empty());
+        assert!(server.excluded.read().is_empty());
+    }
+
+    #[test]
+    fn renew_and_relay_replies_use_correct_destination() {
+        let server = make_server();
+        let discover = sample_discover();
+        let offer = process_dhcp_message(&server, &discover).unwrap();
+        let request = request_for(&discover, offer.yiaddr(), Some(ip("192.168.1.1")));
+        process_dhcp_message(&server, &request).unwrap();
+        let mut renew = discover.clone();
+        renew
+            .opts_mut()
+            .insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Request));
+        renew.set_ciaddr(offer.yiaddr());
+        let ack = process_dhcp_message(&server, &renew).unwrap();
+        assert_kind(&ack, MessageType::Ack);
+        assert_eq!(
+            response_destination(&ack),
+            SocketAddrV4::new(offer.yiaddr(), 68)
+        );
+        renew.set_giaddr(ip("192.168.1.2"));
+        let ack = process_dhcp_message(&server, &renew).unwrap();
+        assert_eq!(
+            response_destination(&ack),
+            SocketAddrV4::new(ip("192.168.1.2"), 67)
+        );
+    }
+
+    #[test]
+    fn maximum_lease_time_does_not_overflow_rebinding() {
+        let server = make_server();
+        server.config.write().lease_time = u32::MAX;
+        let ack = build_ack(&sample_discover(), ip("192.168.1.100"), &server);
+        assert!(matches!(
+            ack.opts().get(dhcproto::v4::OptionCode::Rebinding),
+            Some(dhcproto::v4::DhcpOption::Rebinding(3758096383))
+        ));
+    }
+
+    #[test]
+    fn packet_transactions_and_cleanup_preserve_pool_ownership() {
+        let server = Arc::new(make_server());
+        std::thread::scope(|scope| {
+            let server_ref = &server;
+            scope.spawn(move || {
+                for _ in 0..200 {
+                    reclaim_expired(server_ref);
+                }
+            });
+            for i in 0..20u32 {
+                let server = server.clone();
+                scope.spawn(move || {
+                    let mut discover = Message::new_with_id(
+                        i,
+                        Ipv4Addr::UNSPECIFIED,
+                        Ipv4Addr::UNSPECIFIED,
+                        Ipv4Addr::UNSPECIFIED,
+                        Ipv4Addr::UNSPECIFIED,
+                        &mac(i as u8, 1),
+                    );
+                    discover.set_opcode(Opcode::BootRequest);
+                    discover
+                        .opts_mut()
+                        .insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Discover));
+                    let offer = process_dhcp_message(&server, &discover).unwrap();
+                    let request = request_for(&discover, offer.yiaddr(), Some(ip("192.168.1.1")));
+                    assert_kind(
+                        &process_dhcp_message(&server, &request).unwrap(),
+                        MessageType::Ack,
+                    );
+                });
+            }
+        });
+        let leases = server.leases.read();
+        assert_eq!(leases.len(), 20);
+        let addresses: HashSet<_> = leases.values().map(|l| l.ip).collect();
+        assert_eq!(addresses.len(), 20);
+        let pool = server.pool.read();
+        assert!(
+            addresses
+                .iter()
+                .all(|ip| pool.allocated.contains(&u32::from(*ip)))
+        );
+    }
+
     #[test]
     fn test_request_allowed_for_own_offer() {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
-        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
+        server
+            .offered
+            .write()
+            .insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
         // MAC that received the offer may request that exact IP
         assert!(server.can_client_request(mac(1, 1), ip("192.168.1.100")));
         // A different MAC may NOT steal the offered IP
@@ -889,7 +1248,10 @@ mod tests {
     fn test_request_expired_offer_rejected() {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
-        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now - 1, mac(1, 1)));
+        server
+            .offered
+            .write()
+            .insert(u32::from(ip("192.168.1.100")), (now - 1, mac(1, 1)));
         assert!(!server.can_client_request(mac(1, 1), ip("192.168.1.100")));
     }
 
@@ -906,9 +1268,17 @@ mod tests {
         // Old IP must be released back to the pool (free again)
         let mut p = server.pool.write();
         let free = p.next_available(&HashSet::new());
-        assert_eq!(free, Some(ip("192.168.1.100")), "old IP should be reusable after lease move");
+        assert_eq!(
+            free,
+            Some(ip("192.168.1.100")),
+            "old IP should be reusable after lease move"
+        );
         let free2 = p.next_available(&HashSet::new());
-        assert_eq!(free2, Some(ip("192.168.1.102")), "next free should be the following IP");
+        assert_eq!(
+            free2,
+            Some(ip("192.168.1.102")),
+            "next free should be the following IP"
+        );
     }
 
     // ======================================================================
@@ -920,10 +1290,16 @@ mod tests {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
         // Quarantine an IP
-        server.declined.write().insert(u32::from(ip("192.168.1.100")), now + 600);
+        server
+            .declined
+            .write()
+            .insert(u32::from(ip("192.168.1.100")), now + 600);
         // Even with a fresh offer to this MAC, a quarantined IP must not be
         // grantable via REQUEST.
-        server.offered.write().insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
+        server
+            .offered
+            .write()
+            .insert(u32::from(ip("192.168.1.100")), (now + 30, mac(1, 1)));
         assert!(
             !server.can_client_request(mac(1, 1), ip("192.168.1.100")),
             "quarantined IP must not be requestable"
@@ -934,12 +1310,19 @@ mod tests {
     fn test_declined_ip_skipped_by_pool() {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
-        server.declined.write().insert(u32::from(ip("192.168.1.100")), now + 600);
+        server
+            .declined
+            .write()
+            .insert(u32::from(ip("192.168.1.100")), now + 600);
         // Pool must hand out a different IP first
         let mut p = server.pool.write();
         let declined: HashSet<u32> = server.declined.read().keys().copied().collect();
         let next = p.next_available(&declined);
-        assert_ne!(next, Some(ip("192.168.1.100")), "declined IP must be skipped");
+        assert_ne!(
+            next,
+            Some(ip("192.168.1.100")),
+            "declined IP must be skipped"
+        );
     }
 
     #[test]
@@ -959,7 +1342,11 @@ mod tests {
         let mut p = server.pool.write();
         let declined = HashSet::new();
         let next = p.next_available(&declined);
-        assert_ne!(next, Some(ip("192.168.1.100")), "double-allocated IP must not be released");
+        assert_ne!(
+            next,
+            Some(ip("192.168.1.100")),
+            "double-allocated IP must not be released"
+        );
         // The next free IP is .101 (not .100)
         assert_eq!(next, Some(ip("192.168.1.101")));
     }
@@ -973,7 +1360,11 @@ mod tests {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
         // Simulate the real DECLINE handler on a quarantined IP
-        server.handle_decline(mac(1, 1), ip("192.168.1.100"), now);
+        server
+            .offered
+            .write()
+            .insert(ipu("192.168.1.100"), (now + 30, mac(1, 1)));
+        server.handle_decline(mac(1, 1), ip("192.168.1.100"), now - 601);
 
         // Quarantine expires (past the 10-min window)
         reclaim_expired(&server);
@@ -982,8 +1373,16 @@ mod tests {
         let mut p = server.pool.write();
         let declined_now = HashSet::new(); // quarantine is gone, only permanent mark remains
         let next = p.next_available(&declined_now);
-        assert_ne!(next, Some(ip("192.168.1.100")), "declined IP must stay out of the pool");
-        assert_eq!(next, Some(ip("192.168.1.101")), "next free IP after permanent decline");
+        assert_ne!(
+            next,
+            Some(ip("192.168.1.100")),
+            "declined IP must stay out of the pool"
+        );
+        assert_eq!(
+            next,
+            Some(ip("192.168.1.101")),
+            "next free IP after permanent decline"
+        );
     }
 
     // ── Test 7: next_available returns start, start+1 … ──────────────────
@@ -1072,7 +1471,9 @@ mod tests {
         );
         msg.set_opcode(dhcproto::v4::Opcode::BootRequest);
         let mut opts = dhcproto::v4::DhcpOptions::new();
-        opts.insert(dhcproto::v4::DhcpOption::MessageType(dhcproto::v4::MessageType::Discover));
+        opts.insert(dhcproto::v4::DhcpOption::MessageType(
+            dhcproto::v4::MessageType::Discover,
+        ));
         msg.set_opts(opts);
         msg
     }
@@ -1084,7 +1485,10 @@ mod tests {
         let discover = sample_discover();
         let offer = build_offer(&discover, ip("192.168.1.50"), &server);
         let opts = offer.opts();
-        let lt = match opts.get(dhcproto::v4::OptionCode::AddressLeaseTime).unwrap() {
+        let lt = match opts
+            .get(dhcproto::v4::OptionCode::AddressLeaseTime)
+            .unwrap()
+        {
             dhcproto::v4::DhcpOption::AddressLeaseTime(v) => *v,
             _ => panic!("missing AddressLeaseTime"),
         };
@@ -1098,7 +1502,7 @@ mod tests {
             dhcproto::v4::DhcpOption::Rebinding(v) => *v,
             _ => panic!("missing Rebinding"),
         };
-        assert_eq!(rebind, 64800); // 86400*3/4
+        assert_eq!(rebind, 75600); // 86400*7/8
     }
 
     // ── Test 22: offer contains SubnetMask, Router, ServerIdentifier ────
@@ -1110,9 +1514,14 @@ mod tests {
         let opts = offer.opts();
         assert!(opts.get(dhcproto::v4::OptionCode::SubnetMask).is_some());
         assert!(opts.get(dhcproto::v4::OptionCode::Router).is_some());
-        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
+        assert!(
+            opts.get(dhcproto::v4::OptionCode::ServerIdentifier)
+                .is_some()
+        );
         match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
-            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Offer),
+            dhcproto::v4::DhcpOption::MessageType(mt) => {
+                assert_eq!(*mt, dhcproto::v4::MessageType::Offer)
+            }
             _ => panic!("wrong type"),
         }
     }
@@ -1128,7 +1537,10 @@ mod tests {
         }
         let offer = build_offer(&sample_discover(), ip("192.168.1.50"), &server);
         let opts = offer.opts();
-        let dns = match opts.get(dhcproto::v4::OptionCode::DomainNameServer).unwrap() {
+        let dns = match opts
+            .get(dhcproto::v4::OptionCode::DomainNameServer)
+            .unwrap()
+        {
             dhcproto::v4::DhcpOption::DomainNameServer(v) => v.clone(),
             _ => panic!("missing DNS"),
         };
@@ -1141,7 +1553,10 @@ mod tests {
         }
         let offer = build_offer(&sample_discover(), ip("192.168.1.50"), &server);
         let opts = offer.opts();
-        let dns = match opts.get(dhcproto::v4::OptionCode::DomainNameServer).unwrap() {
+        let dns = match opts
+            .get(dhcproto::v4::OptionCode::DomainNameServer)
+            .unwrap()
+        {
             dhcproto::v4::DhcpOption::DomainNameServer(v) => v.clone(),
             _ => panic!("missing DNS"),
         };
@@ -1156,13 +1571,21 @@ mod tests {
         let ack = build_ack(&request, ip("192.168.1.50"), &server);
         let opts = ack.opts();
         match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
-            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Ack),
+            dhcproto::v4::DhcpOption::MessageType(mt) => {
+                assert_eq!(*mt, dhcproto::v4::MessageType::Ack)
+            }
             _ => panic!("wrong type"),
         }
         assert!(opts.get(dhcproto::v4::OptionCode::SubnetMask).is_some());
         assert!(opts.get(dhcproto::v4::OptionCode::Router).is_some());
-        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
-        assert!(opts.get(dhcproto::v4::OptionCode::AddressLeaseTime).is_some());
+        assert!(
+            opts.get(dhcproto::v4::OptionCode::ServerIdentifier)
+                .is_some()
+        );
+        assert!(
+            opts.get(dhcproto::v4::OptionCode::AddressLeaseTime)
+                .is_some()
+        );
         // yiaddr should be the offered IP
         assert_eq!(ack.yiaddr(), ip("192.168.1.50"));
     }
@@ -1175,10 +1598,15 @@ mod tests {
         let nak = build_nak(&request, &server);
         let opts = nak.opts();
         match opts.get(dhcproto::v4::OptionCode::MessageType).unwrap() {
-            dhcproto::v4::DhcpOption::MessageType(mt) => assert_eq!(*mt, dhcproto::v4::MessageType::Nak),
+            dhcproto::v4::DhcpOption::MessageType(mt) => {
+                assert_eq!(*mt, dhcproto::v4::MessageType::Nak)
+            }
             _ => panic!("wrong type"),
         }
-        assert!(opts.get(dhcproto::v4::OptionCode::ServerIdentifier).is_some());
+        assert!(
+            opts.get(dhcproto::v4::OptionCode::ServerIdentifier)
+                .is_some()
+        );
         // yiaddr must be 0.0.0.0 for NAK
         assert_eq!(nak.yiaddr(), Ipv4Addr::UNSPECIFIED);
     }
@@ -1187,8 +1615,12 @@ mod tests {
     // try_commit_lease tests (P1) — #4 fix regression tests
     // ======================================================================
 
-    fn mac_a() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01] }
-    fn mac_b() -> [u8; 6] { [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02] }
+    fn mac_a() -> [u8; 6] {
+        [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x01]
+    }
+    fn mac_b() -> [u8; 6] {
+        [0xAA, 0xBB, 0xCC, 0xDD, 0xEE, 0x02]
+    }
 
     // ── Test 34: empty IP → committed, lease exists ─────────────────────
     #[test]
@@ -1260,13 +1692,16 @@ mod tests {
     fn test_reclaim_expired_lease() {
         let server = make_server();
         // Insert a lease with past expiry
-        server.leases.write().insert(mac_a(), Lease {
-            ip: ip("192.168.1.100"),
-            mac: mac_a(),
-            hostname: None,
-            vendor: None,
-            expires_at: 1, // expired
-        });
+        server.leases.write().insert(
+            mac_a(),
+            Lease {
+                ip: ip("192.168.1.100"),
+                mac: mac_a(),
+                hostname: None,
+                vendor: None,
+                expires_at: 1, // expired
+            },
+        );
         server.pool.write().mark_allocated(ip("192.168.1.100"));
         reclaim_expired(&server);
         // Lease removed, IP back in pool
@@ -1282,7 +1717,10 @@ mod tests {
     fn test_reclaim_expired_offer() {
         let server = make_server();
         let now = chrono::Utc::now().timestamp();
-        server.offered.write().insert(ipu("192.168.1.100"), (now - 10, mac_a())); // expired offer
+        server
+            .offered
+            .write()
+            .insert(ipu("192.168.1.100"), (now - 10, mac_a())); // expired offer
         server.pool.write().mark_allocated(ip("192.168.1.100"));
         reclaim_expired(&server);
         // Offer removed
@@ -1306,8 +1744,6 @@ mod tests {
         // IP back in pool
         let mut pool = server.pool.write();
         let declined = HashSet::new();
-        assert_eq!(pool.next_available(&declined), Some(ip("192.168.1.100")));
+        assert_ne!(pool.next_available(&declined), Some(ip("192.168.1.100")));
     }
 }
-
-

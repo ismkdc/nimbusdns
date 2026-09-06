@@ -25,7 +25,6 @@ uuid.workspace = true
 sha2.workspace = true
 argon2.workspace = true
 password-hash.workspace = true
-rand_core.workspace = true
 dashmap.workspace = true
 parking_lot.workspace = true
 rusqlite.workspace = true
