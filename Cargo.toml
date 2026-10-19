@@ -8,23 +8,23 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.8"
+version = "0.5.9"
 edition = "2024"
 license = "MIT"
 authors = ["NimbusDNS contributors"]
 
 [workspace.dependencies]
 # -- Async runtime ------------------------------------------------------
-tokio = { version = "1.53.1", features = ["full"] }
+tokio = { version = "1.54.0", features = ["full"] }
 futures-util = "0.3.34"
 
 # -- DNS (hickory - formerly trust-dns) ---------------------------------
-hickory-proto = "0.26.2"
+hickory-proto = "0.26.3"
 
 # -- TLS / DoT ----------------------------------------------------------
-rustls = "0.23.43"
-tokio-rustls = "0.26.5"
-rustls-native-certs = "0.8.4"
+rustls = "0.23.46"
+tokio-rustls = "0.26.6"
+rustls-native-certs = "0.8.5"
 
 # -- HTTP / Web ---------------------------------------------------------
 axum = "0.8.9"
@@ -33,8 +33,8 @@ tower-http = { version = "0.7.1", features = ["cors", "trace", "compression-gzip
 
 # -- Serialization ------------------------------------------------------
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-toml = "1.1.5"
+serde_json = "1.0.154"
+toml = "1.1.8"
 
 # -- Database -----------------------------------------------------------
 rusqlite = { version = "0.40.2", features = ["bundled", "vtab", "series"] }
@@ -44,25 +44,25 @@ tracing = "0.1.44"
 tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter", "time"] }
 
 # -- CLI ----------------------------------------------------------------
-clap = { version = "4.6.6", features = ["derive", "env"] }
+clap = { version = "4.6.7", features = ["derive", "env"] }
 
 # -- System -------------------------------------------------------------
 nix = { version = "0.31.3", features = ["fs", "signal", "net", "socket", "uio", "poll"] }
-signal-hook = "0.4.4"
+signal-hook = "0.4.5"
 signal-hook-tokio = { version = "0.4.0", features = ["futures-v0_3"] }
-libc = "0.2.189"
+libc = "0.2.191"
 
 # -- Error handling -----------------------------------------------------
-thiserror = "2.0.20"
+thiserror = "2.0.21"
 anyhow = "1.0.104"
 # -- Time ---------------------------------------------------------------
 chrono = { version = "0.4.45", features = ["serde"] }
 
 # -- Cryptography / Auth ------------------------------------------------
-sha2 = "0.11.0"
+sha2 = "0.11.1"
 argon2 = { version = "0.6.0", features = ["getrandom"] }
 password-hash = "0.6.1"
-uuid = { version = "1.26.0", features = ["v4", "serde"] }
+uuid = { version = "1.28.0", features = ["v4", "serde"] }
 
 # -- Data structures ----------------------------------------------------
 dashmap = "6.2.1"
@@ -73,7 +73,7 @@ regex = "1.13.1"
 # -- HTTP client (for StevenBlack hosts fetcher) ------------------------
 # `rustls` is the only feature needed — it pulls rustls-platform-verifier for
 # system CA roots. `rustls-native-certs` is NOT a feature in reqwest 0.13.
-reqwest = { version = "0.13.4", features = ["rustls"] }
+reqwest = { version = "0.13.5", features = ["rustls"] }
 
 # -- Utilities ----------------------------------------------------------
 hostname = "0.4.2"
