@@ -1331,7 +1331,7 @@ checksum = "743fb55ba31b18fb1ecef6bdc9aa2743314978ac084044301a7eee33fb99a20d"
 
 [[package]]
 name = "nimbus-api"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "argon2",
@@ -1358,7 +1358,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-bin"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "chrono",
@@ -1374,7 +1374,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-core"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "bytes",
@@ -1409,7 +1409,7 @@ dependencies = [
 
 [[package]]
 name = "nimbus-web"
-version = "0.5.9"
+version = "0.5.10"
 dependencies = [
  "anyhow",
  "axum",

@@ -109,6 +109,13 @@ impl DnsCache {
         // Remove old entry if exists (O(1) in DashMap)
         self.entries.remove(&key);
 
+        // A full cache is usually full of expired entries (they are otherwise
+        // only dropped when the same key is looked up again), so reclaim those
+        // first before evicting anything still live.
+        if self.entries.len() >= self.max_entries {
+            self.purge_expired();
+        }
+
         // Probabilistic eviction: sample up to 8 entries, evict oldest sampled.
         // Loops because under concurrency multiple threads may select the same
         // oldest candidate — `remove` returns None for all but one, so we keep
@@ -133,6 +140,17 @@ impl DnsCache {
             self.entries.remove(&k);
             trace!("Evicted cache entry (probabilistic)");
         }
+    }
+
+    /// Drop every expired entry. Returns how many were removed.
+    pub fn purge_expired(&self) -> usize {
+        let before = self.entries.len();
+        self.entries.retain(|_, v| !v.is_expired());
+        let removed = before.saturating_sub(self.entries.len());
+        if removed > 0 {
+            trace!("Purged {} expired cache entries", removed);
+        }
+        removed
     }
 
     /// Remove all cache entries for a domain. Both the key and the argument
@@ -406,5 +424,37 @@ mod tests {
         assert_eq!(removed, 1, "remove_domain must normalize trailing dot");
         assert_eq!(cache.len(), 1);
         assert!(cache.get(&make_key("other.com")).is_some());
+    }
+
+    // ── Test 25: purge_expired drops only expired entries ────────────────
+    #[test]
+    fn test_purge_expired() {
+        let cache = DnsCache::new(10);
+        cache.insert(make_key("live.com"), make_response(300));
+        cache.insert(make_key("dead1.com"), make_response(0));
+        cache.insert(make_key("dead2.com"), make_response(0));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        assert_eq!(cache.purge_expired(), 2);
+        assert_eq!(cache.len(), 1);
+        assert!(cache.get(&make_key("live.com")).is_some());
+    }
+
+    // ── Test 26: a full cache reclaims expired entries before live ones ──
+    #[test]
+    fn test_full_cache_evicts_expired_before_live() {
+        let cache = DnsCache::new(4);
+        cache.insert(make_key("live1.com"), make_response(300));
+        cache.insert(make_key("live2.com"), make_response(300));
+        cache.insert(make_key("dead1.com"), make_response(0));
+        cache.insert(make_key("dead2.com"), make_response(0));
+        std::thread::sleep(std::time::Duration::from_millis(5));
+
+        cache.insert(make_key("new.com"), make_response(300));
+
+        assert_eq!(cache.len(), 3);
+        for live in ["live1.com", "live2.com", "new.com"] {
+            assert!(cache.get(&make_key(live)).is_some(), "{live} must survive");
+        }
     }
 }

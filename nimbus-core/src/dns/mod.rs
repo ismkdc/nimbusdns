@@ -51,6 +51,22 @@ pub async fn start(
     // Initialize DNS cache (after releasing config lock)
     let cache = Arc::new(DnsCache::new(cache_entries));
 
+    // Periodically sweep expired entries so they don't sit in the cache until
+    // it fills up and starts evicting live ones.
+    {
+        let cache = cache.clone();
+        let mut shutdown = shutdown_rx.clone();
+        tokio::spawn(async move {
+            let mut sweep = tokio::time::interval(std::time::Duration::from_secs(60));
+            loop {
+                tokio::select! {
+                    _ = sweep.tick() => { cache.purge_expired(); }
+                    _ = shutdown.changed() => break,
+                }
+            }
+        });
+    }
+
     // Initialize query router (binds forwarding UDP socket)
     let mut router = QueryRouter::new(
         state.clone(),

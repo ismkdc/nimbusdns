@@ -398,13 +398,21 @@ pub async fn start(
         loop {
             tokio::select! {
                 result = socket.recv_from(&mut buf) => {
-                    if let Ok((len, src)) = result {
-                        let data = buf[..len].to_vec();
-                        let s = svr.clone();
-                        let sock = socket.clone();
-                        tokio::spawn(async move {
-                            handle_dhcp_packet(s, sock, data, src, src_ip_h, ifindex_h).await;
-                        });
+                    match result {
+                        Ok((len, src)) => {
+                            let data = buf[..len].to_vec();
+                            let s = svr.clone();
+                            let sock = socket.clone();
+                            tokio::spawn(async move {
+                                handle_dhcp_packet(s, sock, data, src, src_ip_h, ifindex_h).await;
+                            });
+                        }
+                        Err(e) => {
+                            // Back off so a persistent socket error can't spin
+                            // this loop at 100% CPU.
+                            warn!("DHCP recv error (retrying): {}", e);
+                            tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+                        }
                     }
                 }
                 _ = check.tick() => {

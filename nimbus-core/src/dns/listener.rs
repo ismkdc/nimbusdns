@@ -14,6 +14,10 @@ use tracing::{info, error, debug};
 use crate::dns::router::{QueryRouter, QueryResult, truncate_if_needed};
 
 const MAX_DNS_SIZE: usize = 4096;
+/// Pause after a socket-level recv/accept error before trying again. Errors
+/// such as ENOBUFS or EMFILE are transient; exiting the loop instead would
+/// leave the process running with DNS silently dead.
+const SOCKET_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_millis(50);
 /// How long a TCP client may be idle before its connection is dropped.
 /// Prevents a client that connects and sends nothing from holding a
 /// spawned task + fd open indefinitely (resource-exhaustion DoS).
@@ -160,8 +164,8 @@ async fn handle_udp(
                         });
                     }
                     Err(e) => {
-                        error!("UDP recv error: {}", e);
-                        break;
+                        error!("UDP recv error (retrying): {}", e);
+                        tokio::time::sleep(SOCKET_ERROR_BACKOFF).await;
                     }
                 }
             }
@@ -274,8 +278,8 @@ async fn handle_tcp(
                         });
                     }
                     Err(e) => {
-                        error!("TCP accept error: {}", e);
-                        break;
+                        error!("TCP accept error (retrying): {}", e);
+                        tokio::time::sleep(SOCKET_ERROR_BACKOFF).await;
                     }
                 }
             }
