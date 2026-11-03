@@ -42,6 +42,66 @@ fn resolve_ifindex(name: &Option<String>) -> libc::c_uint {
         .unwrap_or(0)
 }
 
+/// IPv4 addresses configured on this host, as (interface name, address, netmask).
+fn local_ipv4_addrs() -> Vec<(String, Ipv4Addr, Ipv4Addr)> {
+    let mut out = Vec::new();
+    let mut ifap: *mut libc::ifaddrs = std::ptr::null_mut();
+    if unsafe { libc::getifaddrs(&mut ifap) } != 0 {
+        return out;
+    }
+    let mut cur = ifap;
+    while !cur.is_null() {
+        let ifa = unsafe { &*cur };
+        cur = ifa.ifa_next;
+        if ifa.ifa_addr.is_null() || ifa.ifa_netmask.is_null() {
+            continue;
+        }
+        if unsafe { (*ifa.ifa_addr).sa_family } as i32 != libc::AF_INET {
+            continue;
+        }
+        let addr = unsafe { &*(ifa.ifa_addr as *const libc::sockaddr_in) };
+        let mask = unsafe { &*(ifa.ifa_netmask as *const libc::sockaddr_in) };
+        let name = unsafe { std::ffi::CStr::from_ptr(ifa.ifa_name) }.to_string_lossy().into_owned();
+        out.push((
+            name,
+            Ipv4Addr::from(u32::from_be(addr.sin_addr.s_addr)),
+            Ipv4Addr::from(u32::from_be(mask.sin_addr.s_addr)),
+        ));
+    }
+    unsafe { libc::freeifaddrs(ifap) };
+    out
+}
+
+/// Pick the address this server answers from: on `interface` when one is
+/// configured, preferring an address in the pool's subnet; otherwise any
+/// local address in the pool's subnet. Falls back to `fallback` (the old
+/// behaviour: the configured router) when none is found.
+///
+/// Using the router address unconditionally only worked when nimbusdns runs
+/// on the gateway itself; on a separate host the kernel refused to send from
+/// a foreign address ("Network is unreachable") and no client got an offer.
+fn choose_server_ip(
+    addrs: &[(String, Ipv4Addr, Ipv4Addr)],
+    interface: Option<&str>,
+    pool_start: Ipv4Addr,
+    fallback: Ipv4Addr,
+) -> Ipv4Addr {
+    let in_pool_subnet = |ip: Ipv4Addr, mask: Ipv4Addr| {
+        u32::from(ip) & u32::from(mask) == u32::from(pool_start) & u32::from(mask)
+    };
+    let usable = |ip: &Ipv4Addr| !ip.is_loopback() && !ip.is_unspecified() && !ip.is_link_local();
+    let candidates: Vec<_> = addrs
+        .iter()
+        .filter(|(name, ip, _)| usable(ip) && interface.is_none_or(|want| name == want))
+        .collect();
+    candidates
+        .iter()
+        .find(|(_, ip, mask)| in_pool_subnet(*ip, *mask))
+        .or_else(|| if interface.is_some() { candidates.first() } else { None })
+        .map(|(_, ip, _)| *ip)
+        .unwrap_or(fallback)
+}
+
 /// Enable IP_PKTINFO on a socket so sendmsg can set source IP per packet.
 fn enable_ip_pktinfo(fd: std::os::fd::RawFd) -> io::Result<()> {
     let enable: libc::c_int = 1;
@@ -125,6 +185,10 @@ pub struct DhcpServer {
     declined: Arc<RwLock<HashMap<u32, i64>>>,
     /// Database for lease persistence
     db: Option<Arc<crate::database::queries::QueryDb>>,
+    /// This server's own address on the served network: the IP source of
+    /// every reply and the ServerIdentifier (option 54). Distinct from
+    /// `config.router`, the gateway handed to clients (option 3).
+    server_ip: Ipv4Addr,
 }
 
 impl DhcpServer {
@@ -313,7 +377,11 @@ pub async fn start(
     // Source IP for responses (must match ServerIdentifier option for iOS)
     let (src_ip, ifindex) = {
         let cfg = config.read();
-        let ip = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+        let fallback = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+        let ip = choose_server_ip(&local_ipv4_addrs(), cfg.interface.as_deref(), pool_start, fallback);
+        if ip == fallback && cfg.router.is_some() {
+            debug!("DHCP server address: using the configured router {}", ip);
+        }
         let idx = resolve_ifindex(&cfg.interface);
         (ip, idx)
     };
@@ -343,6 +411,7 @@ pub async fn start(
         offered: Arc::new(RwLock::new(HashMap::new())),
         declined: Arc::new(RwLock::new(HashMap::new())),
         db,
+        server_ip: src_ip,
     });
 
     // Socket: create via socket2 for full option control, then convert to tokio.
@@ -386,7 +455,9 @@ pub async fn start(
         }
     };
 
-    let mut buf = vec![0u8; 1024];
+    // A whole Ethernet payload: clients with many options (PXE, vendor
+    // class) send more than the old 1 KiB, and truncated packets fail to decode.
+    let mut buf = vec![0u8; 1500];
     let mut shutdown = shutdown_rx;
     let svr = server.clone();
     let cfg_check = server.config.clone();
@@ -445,7 +516,9 @@ async fn handle_dhcp_packet(
 ) {
     let mut decoder = dhcproto::Decoder::new(&data);
     let msg = match Message::decode(&mut decoder) {
-        Ok(msg) if msg.opcode() == Opcode::BootRequest && msg.chaddr().len() == 6 => msg,
+        // Check hlen before chaddr(): dhcproto slices its 16-byte chaddr by
+        // hlen, so a packet with hlen > 16 would panic this task.
+        Ok(msg) if msg.opcode() == Opcode::BootRequest && msg.hlen() == 6 => msg,
         Ok(_) => return,
         Err(e) => {
             warn!("DHCP decode error from {}: {}", src, e);
@@ -495,7 +568,7 @@ async fn handle_dhcp_packet(
 /// Process one transaction without network I/O. All state and persistence changes
 /// happen under the same lock on a blocking worker, before emitting the reply.
 fn process_dhcp_message(server: &DhcpServer, msg: &Message) -> Option<Message> {
-    if msg.opcode() != Opcode::BootRequest || msg.chaddr().len() != 6 {
+    if msg.opcode() != Opcode::BootRequest || msg.hlen() != 6 {
         return None;
     }
     let mac: [u8; 6] = msg.chaddr().try_into().ok()?;
@@ -504,7 +577,7 @@ fn process_dhcp_message(server: &DhcpServer, msg: &Message) -> Option<Message> {
         _ => return None,
     };
     let cfg = server.config.read().clone();
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let sid = server.server_ip;
     let selected = match msg.opts().get(dhcproto::v4::OptionCode::ServerIdentifier) {
         Some(dhcproto::v4::DhcpOption::ServerIdentifier(ip)) => Some(*ip),
         _ => None,
@@ -627,6 +700,14 @@ fn process_dhcp_message(server: &DhcpServer, msg: &Message) -> Option<Message> {
             }
             None
         }
+        // A client that already has an address (often statically set) asks
+        // only for configuration: DNS, router, domain (RFC 2131 §3.4).
+        MessageType::Inform => {
+            if msg.ciaddr().is_unspecified() {
+                return None; // nowhere to send the answer
+            }
+            Some(build_inform_ack(msg, server))
+        }
         _ => None,
     }
 }
@@ -661,7 +742,7 @@ fn make_msg(xid: u32, yiaddr: Ipv4Addr, siaddr: Ipv4Addr, chaddr: &[u8]) -> Mess
 
 fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let sid = server.server_ip;
     let mut msg = make_msg(discover.xid(), offered_ip, sid, &discover.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
     // Use client's broadcast flag (don't force broadcast)
@@ -698,7 +779,7 @@ fn build_offer(discover: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) ->
 
 fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let sid = server.server_ip;
     let mut msg = make_msg(request.xid(), offered_ip, sid, &request.chaddr()[..6]);
     msg.set_opcode(Opcode::BootReply);
     // Use client's broadcast flag
@@ -733,9 +814,24 @@ fn build_ack(request: &Message, offered_ip: Ipv4Addr, server: &DhcpServer) -> Me
     msg
 }
 
+/// DHCPACK for a DHCPINFORM: the usual configuration options, but no address
+/// (yiaddr 0) and no lease times, because no lease is granted (RFC 2131
+/// §4.3.5). It is unicast to the client's ciaddr like any ACK with ciaddr.
+fn build_inform_ack(request: &Message, server: &DhcpServer) -> Message {
+    let mut msg = build_ack(request, Ipv4Addr::UNSPECIFIED, server);
+    for code in [
+        dhcproto::v4::OptionCode::AddressLeaseTime,
+        dhcproto::v4::OptionCode::Renewal,
+        dhcproto::v4::OptionCode::Rebinding,
+    ] {
+        msg.opts_mut().remove(code);
+    }
+    msg
+}
+
 fn build_nak(request: &Message, server: &DhcpServer) -> Message {
     let cfg = server.config.read();
-    let sid = cfg.router.unwrap_or(Ipv4Addr::new(192, 168, 1, 1));
+    let sid = server.server_ip;
     let mut msg = make_msg(
         request.xid(),
         Ipv4Addr::UNSPECIFIED,
@@ -998,6 +1094,7 @@ mod tests {
             offered: Arc::new(RwLock::new(HashMap::new())),
             declined: Arc::new(RwLock::new(HashMap::new())),
             db: None,
+            server_ip: ip("192.168.1.1"),
         }
     }
 
@@ -1753,5 +1850,122 @@ mod tests {
         let mut pool = server.pool.write();
         let declined = HashSet::new();
         assert_ne!(pool.next_available(&declined), Some(ip("192.168.1.100")));
+    }
+
+    // ======================================================================
+    // 0.5.12: server address, hlen guard, DHCPINFORM
+    // ======================================================================
+
+    fn addrs(list: &[(&str, &str, &str)]) -> Vec<(String, Ipv4Addr, Ipv4Addr)> {
+        list.iter().map(|(n, a, m)| (n.to_string(), ip(a), ip(m))).collect()
+    }
+
+    #[test]
+    fn server_ip_is_own_address_not_the_gateway() {
+        // nimbusdns on 10.77.0.2 serving a LAN whose gateway is 10.77.0.1.
+        let a = addrs(&[("lo", "127.0.0.1", "255.0.0.0"), ("eth0", "10.77.0.2", "255.255.255.0")]);
+        assert_eq!(choose_server_ip(&a, Some("eth0"), ip("10.77.0.100"), ip("10.77.0.1")), ip("10.77.0.2"));
+        assert_eq!(choose_server_ip(&a, None, ip("10.77.0.100"), ip("10.77.0.1")), ip("10.77.0.2"));
+    }
+
+    #[test]
+    fn server_ip_prefers_the_pool_subnet_on_a_multi_homed_host() {
+        let a = addrs(&[
+            ("eth0", "203.0.113.5", "255.255.255.0"),
+            ("br-lan", "192.168.10.1", "255.255.255.0"),
+            ("br-lan", "10.0.0.1", "255.0.0.0"),
+        ]);
+        assert_eq!(choose_server_ip(&a, None, ip("192.168.10.100"), ip("1.1.1.1")), ip("192.168.10.1"));
+        assert_eq!(choose_server_ip(&a, Some("br-lan"), ip("192.168.10.100"), ip("1.1.1.1")), ip("192.168.10.1"));
+    }
+
+    #[test]
+    fn server_ip_uses_the_named_interface_even_off_subnet() {
+        let a = addrs(&[("eth0", "10.1.0.5", "255.255.0.0"), ("eth1", "172.16.0.9", "255.255.0.0")]);
+        assert_eq!(choose_server_ip(&a, Some("eth1"), ip("192.168.5.10"), ip("192.168.5.1")), ip("172.16.0.9"));
+    }
+
+    #[test]
+    fn server_ip_falls_back_to_router_when_nothing_matches() {
+        let a = addrs(&[("lo", "127.0.0.1", "255.0.0.0"), ("eth0", "169.254.3.3", "255.255.0.0")]);
+        assert_eq!(choose_server_ip(&a, None, ip("192.168.1.100"), ip("192.168.1.1")), ip("192.168.1.1"));
+        assert_eq!(choose_server_ip(&[], Some("eth0"), ip("192.168.1.100"), ip("192.168.1.1")), ip("192.168.1.1"));
+    }
+
+    #[test]
+    fn local_ipv4_addrs_includes_loopback() {
+        assert!(local_ipv4_addrs().iter().any(|(_, a, _)| a.is_loopback()));
+    }
+
+    #[test]
+    fn replies_identify_the_server_not_the_router() {
+        let mut server = make_server();
+        server.server_ip = ip("192.168.1.2"); // router stays 192.168.1.1
+        let offer = process_dhcp_message(&server, &sample_discover()).expect("offer");
+        assert_eq!(
+            offer.opts().get(dhcproto::v4::OptionCode::ServerIdentifier),
+            Some(&dhcproto::v4::DhcpOption::ServerIdentifier(ip("192.168.1.2")))
+        );
+        assert_eq!(offer.siaddr(), ip("192.168.1.2"));
+        assert_eq!(
+            offer.opts().get(dhcproto::v4::OptionCode::Router),
+            Some(&dhcproto::v4::DhcpOption::Router(vec![ip("192.168.1.1")])),
+            "the gateway handed to clients is still the configured router"
+        );
+        // A REQUEST naming our address is accepted; one naming the router is not ours.
+        let ours = request_for(&sample_discover(), offer.yiaddr(), Some(ip("192.168.1.2")));
+        assert_kind(&process_dhcp_message(&server, &ours).expect("ack"), MessageType::Ack);
+        let theirs = request_for(&sample_discover(), offer.yiaddr(), Some(ip("192.168.1.1")));
+        assert!(process_dhcp_message(&server, &theirs).is_none());
+    }
+
+    #[test]
+    fn oversized_hlen_is_rejected_without_panicking() {
+        // dhcproto's chaddr() slices a 16-byte array by hlen: hlen 255 used
+        // to panic the packet task. Decode the wire bytes the way the
+        // listener does and check the guard.
+        let mut wire = sample_discover().to_vec().unwrap();
+        wire[2] = 255; // hlen
+        let msg = Message::decode(&mut dhcproto::Decoder::new(&wire)).expect("decodes");
+        assert_eq!(msg.hlen(), 255);
+        let server = make_server();
+        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| process_dhcp_message(&server, &msg)));
+        assert!(matches!(r, Ok(None)), "must be ignored, not panic");
+        for hlen in [0u8, 5, 7, 16, 17] {
+            wire[2] = hlen;
+            let msg = Message::decode(&mut dhcproto::Decoder::new(&wire)).unwrap();
+            assert!(process_dhcp_message(&server, &msg).is_none(), "hlen {hlen}");
+        }
+    }
+
+    fn inform_from(ciaddr: Ipv4Addr) -> Message {
+        let mut msg = sample_discover();
+        msg.set_ciaddr(ciaddr);
+        msg.opts_mut().insert(dhcproto::v4::DhcpOption::MessageType(MessageType::Inform));
+        msg
+    }
+
+    #[test]
+    fn inform_gets_configuration_without_a_lease() {
+        let server = make_server();
+        let ack = process_dhcp_message(&server, &inform_from(ip("192.168.1.50"))).expect("INFORM is answered");
+        assert_kind(&ack, MessageType::Ack);
+        assert_eq!(ack.yiaddr(), Ipv4Addr::UNSPECIFIED, "no address is assigned");
+        for code in [
+            dhcproto::v4::OptionCode::AddressLeaseTime,
+            dhcproto::v4::OptionCode::Renewal,
+            dhcproto::v4::OptionCode::Rebinding,
+        ] {
+            assert!(ack.opts().get(code).is_none(), "{code:?} must be absent");
+        }
+        assert!(ack.opts().get(dhcproto::v4::OptionCode::DomainNameServer).is_some());
+        assert!(ack.opts().get(dhcproto::v4::OptionCode::Router).is_some());
+        assert_eq!(response_destination(&ack), SocketAddrV4::new(ip("192.168.1.50"), CLIENT_PORT));
+        assert!(server.leases.read().is_empty(), "INFORM must not create a lease");
+    }
+
+    #[test]
+    fn inform_without_ciaddr_is_ignored() {
+        assert!(process_dhcp_message(&make_server(), &inform_from(Ipv4Addr::UNSPECIFIED)).is_none());
     }
 }

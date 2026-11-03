@@ -90,11 +90,20 @@ impl QueryRouter {
         };
 
         // 1. Rate limiting
-        if self.rate_limiter.is_rate_limited(&client_addr) {
-            debug!("Rate limited: {} from {}", domain, client_addr);
-            // Log with RateLimited status (7) so query stats reflect it
-            self.log_query(query_log, id, &domain, qtype, &client_addr, 7, start.elapsed());
-            return make_error_response(id, &query, ResponseCode::Refused);
+        match self.rate_limiter.check(&client_addr) {
+            RateDecision::Allowed => {}
+            limited => {
+                debug!("Rate limited: {} from {}", domain, client_addr);
+                // Log only the first refused query of each window (status 7,
+                // so stats still show the client was limited). Logging every
+                // refused query would let one flooding client push hundreds
+                // of thousands of rows a second into the query log, which is
+                // exactly the load rate limiting exists to shed.
+                if limited == RateDecision::LimitedFirst {
+                    self.log_query(query_log, id, &domain, qtype, &client_addr, 7, start.elapsed());
+                }
+                return make_error_response(id, &query, ResponseCode::Refused);
+            }
         }
 
         // 2. Blocking check - in-memory (no SQLite per query)
@@ -143,7 +152,7 @@ impl QueryRouter {
             .forward_attempt(&query, upstreams, DEFAULT_TIMEOUT, DEFAULT_TIMEOUT)
             .await;
 
-        let response = match response {
+        let mut response = match response {
             Some(response) => response,
             None => {
                 warn!("All upstreams failed for {} {} from {}", domain, qtype, client_addr);
@@ -151,6 +160,11 @@ impl QueryRouter {
                 return make_error_response(id, &query, ResponseCode::ServFail);
             }
         };
+
+        // We answer as a recursive forwarder: recursion is available here
+        // (whatever the upstream says) and the answer is not authoritative.
+        response.metadata.recursion_available = true;
+        response.metadata.authoritative = false;
 
         let response_bytes = match response.to_vec() {
             Ok(b) => b,
@@ -473,7 +487,10 @@ impl RateLimiter {
             last_cleanup: parking_lot::Mutex::new(Instant::now()),
         }
     }
-    fn is_rate_limited(&self, client: &std::net::SocketAddr) -> bool {
+    /// Whether `client` may send another query in the current one-second
+    /// window. The first query over the limit in a window is reported as
+    /// `LimitedFirst` so callers can log it once instead of per packet.
+    fn check(&self, client: &std::net::SocketAddr) -> RateDecision {
         let ip = client.ip();
         let now = Instant::now();
 
@@ -491,12 +508,24 @@ impl RateLimiter {
         let mut entry = self.clients.entry(ip).or_insert_with(|| (0, now));
         if now.duration_since(entry.1) > Duration::from_secs(1) {
             *entry = (1, now);
-            false
-        } else {
-            entry.0 += 1;
-            entry.0 > self.max_qps
+            return RateDecision::Allowed;
+        }
+        entry.0 = entry.0.saturating_add(1);
+        match entry.0.cmp(&(self.max_qps.saturating_add(1))) {
+            std::cmp::Ordering::Less => RateDecision::Allowed,
+            std::cmp::Ordering::Equal => RateDecision::LimitedFirst,
+            std::cmp::Ordering::Greater => RateDecision::Limited,
         }
     }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RateDecision {
+    Allowed,
+    /// First query refused in this window (log it).
+    LimitedFirst,
+    /// Further refused queries in the same window (don't log).
+    Limited,
 }
 
 // =============================================================================
@@ -837,12 +866,12 @@ mod tests {
     fn test_rate_limiter_allows_then_blocks_per_client() {
         let limiter = RateLimiter::new(2);
         let client: std::net::SocketAddr = "10.0.0.1:1234".parse().unwrap();
-        assert!(!limiter.is_rate_limited(&client), "1st within window");
-        assert!(!limiter.is_rate_limited(&client), "2nd within window");
-        assert!(limiter.is_rate_limited(&client), "3rd within window must be limited");
+        assert_eq!(limiter.check(&client), RateDecision::Allowed, "1st within window");
+        assert_eq!(limiter.check(&client), RateDecision::Allowed, "2nd within window");
+        assert_ne!(limiter.check(&client), RateDecision::Allowed, "3rd within window must be limited");
         // A different client is not affected
         let other: std::net::SocketAddr = "10.0.0.2:1234".parse().unwrap();
-        assert!(!limiter.is_rate_limited(&other));
+        assert_eq!(limiter.check(&other), RateDecision::Allowed);
     }
 
     #[test]
@@ -850,7 +879,20 @@ mod tests {
         // max_qps = 1 → the 2nd call in the same window is limited
         let limiter = RateLimiter::new(1);
         let client: std::net::SocketAddr = "10.0.0.1:1234".parse().unwrap();
-        assert!(!limiter.is_rate_limited(&client));
-        assert!(limiter.is_rate_limited(&client));
+        assert_eq!(limiter.check(&client), RateDecision::Allowed);
+        assert_ne!(limiter.check(&client), RateDecision::Allowed);
+    }
+
+    #[test]
+    fn test_rate_limiter_reports_only_first_refusal_per_window() {
+        // A flooding client must produce one "log this" decision per window,
+        // not one per packet (the query log is what rate limiting protects).
+        let limiter = RateLimiter::new(3);
+        let client: std::net::SocketAddr = "10.0.0.9:53".parse().unwrap();
+        let decisions: Vec<_> = (0..1000).map(|_| limiter.check(&client)).collect();
+        assert_eq!(decisions.iter().filter(|d| **d == RateDecision::Allowed).count(), 3);
+        assert_eq!(decisions.iter().filter(|d| **d == RateDecision::LimitedFirst).count(), 1);
+        assert_eq!(decisions[3], RateDecision::LimitedFirst);
+        assert_eq!(decisions.iter().filter(|d| **d == RateDecision::Limited).count(), 996);
     }
 }

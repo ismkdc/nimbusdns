@@ -3,10 +3,11 @@
 // =============================================================================
 
 use std::io;
-use std::net::SocketAddr;
+use std::net::{IpAddr, SocketAddr};
 use std::sync::Arc;
 
-use hickory_proto::op::{Message, OpCode, ResponseCode};
+use dashmap::DashMap;
+use hickory_proto::op::{Message, MessageType, OpCode, ResponseCode};
 use tokio::net::{UdpSocket, TcpListener, TcpStream};
 use tokio::sync::{OwnedSemaphorePermit, Semaphore};
 use tracing::{info, error, debug};
@@ -22,28 +23,82 @@ const SOCKET_ERROR_BACKOFF: std::time::Duration = std::time::Duration::from_mill
 /// Prevents a client that connects and sends nothing from holding a
 /// spawned task + fd open indefinitely (resource-exhaustion DoS).
 const IDLE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(10);
+/// Most queries served on one TCP connection before it is closed (RFC 7766
+/// pipelining is supported; this only bounds how long one client keeps a
+/// connection slot).
+const MAX_QUERIES_PER_TCP_CONN: usize = 100;
 
-/// Bounds the number of concurrent in-flight queries. Guards against a
-/// flood of UDP datagrams or TCP connections spawning an unbounded number
-/// of tokio tasks (the `max_concurrent_queries` config knob).
+/// Bounds in-flight queries, globally and per client IP.
+///
+/// The global cap stops a flood from spawning unbounded tokio tasks (the
+/// `max_concurrent_queries` knob). The per-client cap stops one client from
+/// taking every slot: a query to an upstream that never answers holds its
+/// slot for the whole upstream timeout, so without it a few hundred such
+/// queries from one device left no slots for anyone else on the network.
 #[derive(Clone)]
 pub struct QueryLimiter {
     sem: Arc<Semaphore>,
+    per_client: usize,
+    in_flight: Arc<DashMap<IpAddr, usize>>,
+}
+
+/// One reserved query slot; releases the global and per-client counts on drop.
+pub struct QueryPermit {
+    _global: OwnedSemaphorePermit,
+    ip: IpAddr,
+    in_flight: Arc<DashMap<IpAddr, usize>>,
+}
+
+impl Drop for QueryPermit {
+    fn drop(&mut self) {
+        // Decrement, and drop the entry at zero so the map only holds
+        // clients with queries in flight.
+        self.in_flight.remove_if_mut(&self.ip, |_, n| {
+            *n -= 1;
+            *n == 0
+        });
+    }
 }
 
 impl QueryLimiter {
-    fn new(max_concurrent: usize) -> Self {
+    fn new(max_concurrent: usize, per_client: usize) -> Self {
         // `max(1)` so a zero/disabled limit never deadlocks the server to 0.
         Self {
             sem: Arc::new(Semaphore::new(max_concurrent.max(1))),
+            per_client: per_client.max(1),
+            in_flight: Arc::new(DashMap::new()),
         }
     }
 
-    /// Try to reserve a slot. Returns `None` when at capacity; the caller
-    /// should drop the request rather than queue it unboundedly.
-    fn try_acquire(&self) -> Option<OwnedSemaphorePermit> {
-        self.sem.clone().try_acquire_owned().ok()
+    /// Try to reserve a slot for a query from `ip`. Returns `None` when the
+    /// server or that client is at capacity; the caller should drop the
+    /// request rather than queue it unboundedly.
+    fn try_acquire(&self, ip: IpAddr) -> Option<QueryPermit> {
+        {
+            let mut n = self.in_flight.entry(ip).or_insert(0);
+            if *n >= self.per_client {
+                return None;
+            }
+            *n += 1;
+        }
+        match self.sem.clone().try_acquire_owned() {
+            Ok(global) => Some(QueryPermit { _global: global, ip, in_flight: self.in_flight.clone() }),
+            Err(_) => {
+                self.in_flight.remove_if_mut(&ip, |_, n| {
+                    *n -= 1;
+                    *n == 0
+                });
+                None
+            }
+        }
     }
+}
+
+/// A DNS message with QR=1 is a response. A server must not answer one:
+/// replying to responses is how two servers end up bouncing packets at each
+/// other forever, and it turns the server into a reflector.
+fn is_response(msg: &Message) -> bool {
+    msg.metadata.message_type == MessageType::Response
 }
 
 /// Read a length-prefixed DNS message ([2-byte len][payload]) from a TCP
@@ -98,6 +153,7 @@ pub async fn start(
     bind_addr: SocketAddr,
     router: Arc<QueryRouter>,
     max_concurrent_queries: usize,
+    max_concurrent_per_client: usize,
     shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) -> anyhow::Result<()> {
     // Create UDP socket with SO_REUSEADDR for fast restart
@@ -121,7 +177,7 @@ pub async fn start(
     let sock_udp = udp_socket.clone();
     let rtr_udp = router.clone();
     let rtr_tcp = router;
-    let limiter = Arc::new(QueryLimiter::new(max_concurrent_queries));
+    let limiter = Arc::new(QueryLimiter::new(max_concurrent_queries, max_concurrent_per_client));
 
     // Run UDP and TCP concurrently
     let udp_shutdown = shutdown_rx.clone();
@@ -151,7 +207,7 @@ async fn handle_udp(
                     Ok((len, src)) => {
                         // Bound concurrent queries: under extreme load the
                         // packet is dropped instead of spawning unbounded tasks.
-                        let Some(_permit) = limiter.try_acquire() else {
+                        let Some(_permit) = limiter.try_acquire(src.ip()) else {
                             debug!("Concurrency limit reached, dropping UDP query from {}", src);
                             continue;
                         };
@@ -184,6 +240,10 @@ async fn process_udp_query(
     router: Arc<QueryRouter>,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let query = Message::from_vec(&data)?;
+    if is_response(&query) {
+        debug!("Ignoring DNS response (QR=1) sent to us by {}", src);
+        return Ok(());
+    }
     let id = query.metadata.id;
     // Client's advertised EDNS payload size (RFC 6891): 512 if no EDNS.
     let client_max_payload = query.edns.as_ref().map(|e| e.max_payload()).unwrap_or(512) as usize;
@@ -225,8 +285,6 @@ async fn handle_tcp(
     limiter: Arc<QueryLimiter>,
     mut shutdown_rx: tokio::sync::watch::Receiver<bool>,
 ) {
-    use tokio::io::AsyncWriteExt;
-
     loop {
         tokio::select! {
             result = listener.accept() => {
@@ -234,47 +292,14 @@ async fn handle_tcp(
                     Ok((mut stream, src)) => {
                         // Bound concurrent connections: at capacity the new
                         // connection is dropped (TCP clients will retry).
-                        let Some(_permit) = limiter.try_acquire() else {
+                        let Some(permit) = limiter.try_acquire(src.ip()) else {
                             debug!("Concurrency limit reached, dropping TCP connection from {}", src);
                             continue;
                         };
                         let rtr = router.clone();
                         tokio::spawn(async move {
-                            // Read with an idle timeout so a silent client
-                            // cannot hold the task + fd open forever.
-                            let query_buf = match read_dns_message(&mut stream).await {
-                                Ok(buf) => buf,
-                                Err(e) => {
-                                    if e.kind() != io::ErrorKind::TimedOut {
-                                        debug!("TCP read from {} failed: {}", src, e);
-                                    }
-                                    return;
-                                }
-                            };
-
-                            match Message::from_vec(&query_buf) {
-                                Ok(query) => {
-                                    let id = query.metadata.id;
-                                    let result = rtr.route(query, src).await;
-
-                                    let response_bytes = match result {
-                                        QueryResult::Response(b) => b,
-                                        QueryResult::ServerFailure => {
-                                            Message::error_msg(id, OpCode::Query, ResponseCode::ServFail)
-                                                .to_vec().unwrap_or_default()
-                                        }
-                                        QueryResult::Refused => {
-                                            Message::error_msg(id, OpCode::Query, ResponseCode::Refused)
-                                                .to_vec().unwrap_or_default()
-                                        }
-                                    };
-
-                                    let len = (response_bytes.len() as u16).to_be_bytes();
-                                    stream.write_all(&len).await.ok();
-                                    stream.write_all(&response_bytes).await.ok();
-                                }
-                                Err(e) => debug!("TCP query parse failed from {}: {}", src, e),
-                            }
+                            serve_tcp_connection(&mut stream, src, &rtr).await;
+                            drop(permit);
                         });
                     }
                     Err(e) => {
@@ -287,6 +312,58 @@ async fn handle_tcp(
                 info!("TCP listener shutting down gracefully");
                 break;
             }
+        }
+    }
+}
+
+/// Answer queries on one TCP connection until the client closes it, goes
+/// idle, or hits `MAX_QUERIES_PER_TCP_CONN`. Pipelined queries (RFC 7766
+/// §6.2.1) are answered in order. Serving only the first query and closing
+/// with the rest unread made the kernel send RST, which could destroy the
+/// first answer too, so glibc-style A+AAAA over TCP failed outright.
+async fn serve_tcp_connection(stream: &mut TcpStream, src: SocketAddr, router: &Arc<QueryRouter>) {
+    use tokio::io::AsyncWriteExt;
+
+    for _ in 0..MAX_QUERIES_PER_TCP_CONN {
+        // Read with an idle timeout so a silent client cannot hold the
+        // task + fd open forever.
+        let query_buf = match read_dns_message(stream).await {
+            Ok(buf) => buf,
+            Err(e) => {
+                if e.kind() != io::ErrorKind::TimedOut && e.kind() != io::ErrorKind::UnexpectedEof {
+                    debug!("TCP read from {} failed: {}", src, e);
+                }
+                return;
+            }
+        };
+        let query = match Message::from_vec(&query_buf) {
+            Ok(q) => q,
+            Err(e) => {
+                debug!("TCP query parse failed from {}: {}", src, e);
+                return;
+            }
+        };
+        if is_response(&query) {
+            debug!("Ignoring DNS response (QR=1) sent to us over TCP by {}", src);
+            continue;
+        }
+        let id = query.metadata.id;
+        let response_bytes = match router.route(query, src).await {
+            QueryResult::Response(b) => b,
+            QueryResult::ServerFailure => Message::error_msg(id, OpCode::Query, ResponseCode::ServFail)
+                .to_vec()
+                .unwrap_or_default(),
+            QueryResult::Refused => Message::error_msg(id, OpCode::Query, ResponseCode::Refused)
+                .to_vec()
+                .unwrap_or_default(),
+        };
+        // Length prefix and body in one write so they cannot be split
+        // across interleaved writes.
+        let mut out = Vec::with_capacity(response_bytes.len() + 2);
+        out.extend_from_slice(&(response_bytes.len() as u16).to_be_bytes());
+        out.extend_from_slice(&response_bytes);
+        if stream.write_all(&out).await.is_err() {
+            return;
         }
     }
 }
@@ -339,22 +416,232 @@ mod tests {
 
     #[test]
     fn test_query_limiter_bounds_concurrency() {
-        let limiter = QueryLimiter::new(2);
-        let p1 = limiter.try_acquire().expect("first permit");
-        let p2 = limiter.try_acquire().expect("second permit");
+        let limiter = QueryLimiter::new(2, 10);
+        let ip: IpAddr = "10.0.0.1".parse().unwrap();
+        let other: IpAddr = "10.0.0.2".parse().unwrap();
+        let p1 = limiter.try_acquire(ip).expect("first permit");
+        let p2 = limiter.try_acquire(other).expect("second permit");
         // Third acquire must be rejected while two permits are held
-        assert!(limiter.try_acquire().is_none(), "limit of 2 must be enforced");
+        assert!(limiter.try_acquire(ip).is_none(), "global limit of 2 must be enforced");
         drop(p1);
         // One permit released → acquire succeeds again
-        assert!(limiter.try_acquire().is_some());
+        assert!(limiter.try_acquire(ip).is_some());
         drop(p2);
     }
 
     #[test]
     fn test_query_limiter_zero_becomes_one() {
         // A zero/disabled limit must still allow queries (never deadlock to 0)
-        let limiter = QueryLimiter::new(0);
-        assert!(limiter.try_acquire().is_some());
+        let limiter = QueryLimiter::new(0, 0);
+        assert!(limiter.try_acquire("10.0.0.1".parse().unwrap()).is_some());
+    }
+
+    #[test]
+    fn test_query_limiter_caps_each_client() {
+        // One client filling its share must not use up the global slots.
+        let limiter = QueryLimiter::new(100, 3);
+        let greedy: IpAddr = "10.0.0.66".parse().unwrap();
+        let polite: IpAddr = "10.0.0.7".parse().unwrap();
+        let held: Vec<_> = (0..3).map(|_| limiter.try_acquire(greedy).expect("within share")).collect();
+        assert!(limiter.try_acquire(greedy).is_none(), "4th from the same client is refused");
+        assert!(limiter.try_acquire(polite).is_some(), "another client still gets a slot");
+        drop(held);
+        assert!(limiter.try_acquire(greedy).is_some(), "share is released with the permits");
+    }
+
+    #[test]
+    fn test_query_limiter_releases_per_client_count_when_global_is_full() {
+        // A refusal by the global cap must not leak the client's count.
+        let limiter = QueryLimiter::new(1, 5);
+        let a: IpAddr = "10.0.0.1".parse().unwrap();
+        let b: IpAddr = "10.0.0.2".parse().unwrap();
+        let held = limiter.try_acquire(a).unwrap();
+        for _ in 0..20 {
+            assert!(limiter.try_acquire(b).is_none());
+        }
+        drop(held);
+        assert!(limiter.in_flight.is_empty(), "no stale per-client entries: {:?}", limiter.in_flight);
+        let _ = (0..5).map(|_| limiter.try_acquire(b)).collect::<Vec<_>>();
+    }
+
+    #[test]
+    fn test_query_limiter_map_empties_after_release() {
+        let limiter = QueryLimiter::new(10, 10);
+        let ps: Vec<_> = (1..=5)
+            .map(|i| limiter.try_acquire(format!("10.0.0.{i}").parse().unwrap()).unwrap())
+            .collect();
+        assert_eq!(limiter.in_flight.len(), 5);
+        drop(ps);
+        assert!(limiter.in_flight.is_empty());
+    }
+
+    // ── QR=1 and TCP pipelining against a real router ────────────────────
+
+    use hickory_proto::op::Query;
+    use hickory_proto::rr::{Name, RData, Record, RecordType};
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// A one-socket upstream that answers every A query with 10.9.9.9.
+    async fn fake_upstream() -> SocketAddr {
+        let sock = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let addr = sock.local_addr().unwrap();
+        tokio::spawn(async move {
+            let mut buf = [0u8; 4096];
+            while let Ok((n, from)) = sock.recv_from(&mut buf).await {
+                let Ok(q) = Message::from_vec(&buf[..n]) else { continue };
+                let mut r = Message::response(q.metadata.id, OpCode::Query);
+                r.metadata.authoritative = true; // the router must clear this
+                r.metadata.recursion_desired = true;
+                for query in &q.queries {
+                    r.add_query(query.clone());
+                    r.add_answer(Record::from_rdata(
+                        query.name().clone(),
+                        300,
+                        RData::A("10.9.9.9".parse().unwrap()),
+                    ));
+                }
+                let _ = sock.send_to(&r.to_vec().unwrap(), from).await;
+            }
+        });
+        addr
+    }
+
+    async fn test_router() -> Arc<QueryRouter> {
+        let up = fake_upstream().await;
+        let cfg = crate::config::Config {
+            dns: crate::config::DnsConfig {
+                upstreams: vec![crate::config::DnsUpstream::Plain { address: up.ip(), port: up.port() }],
+                ..Default::default()
+            },
+            database: crate::config::DatabaseConfig {
+                gravity_db: ":memory:".into(),
+                nimbus_db: ":memory:".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let db = crate::database::Database::open(&cfg.database).unwrap();
+        let state = Arc::new(crate::AppState::new(cfg, db));
+        let blocking = Arc::new(
+            crate::blocking::BlockingEngine::load(&state.database.gravity, &state.config.read()).unwrap(),
+        );
+        Arc::new(QueryRouter::new(
+            state,
+            Arc::new(crate::dns::cache::DnsCache::new(100)),
+            Arc::new(crate::dns::dot::DotManager::new()),
+            blocking,
+        ))
+    }
+
+    fn query_wire(name: &str, id: u16) -> Vec<u8> {
+        let mut m = Message::query();
+        m.metadata.id = id;
+        m.metadata.recursion_desired = true;
+        m.add_query(Query::query(Name::from_ascii(name).unwrap(), RecordType::A));
+        m.to_vec().unwrap()
+    }
+
+    fn framed(msgs: &[Vec<u8>]) -> Vec<u8> {
+        let mut out = Vec::new();
+        for m in msgs {
+            out.extend_from_slice(&(m.len() as u16).to_be_bytes());
+            out.extend_from_slice(m);
+        }
+        out
+    }
+
+    async fn read_framed(stream: &mut TcpStream) -> Option<Message> {
+        let mut len = [0u8; 2];
+        tokio::time::timeout(std::time::Duration::from_secs(3), stream.read_exact(&mut len)).await.ok()?.ok()?;
+        let mut body = vec![0u8; u16::from_be_bytes(len) as usize];
+        stream.read_exact(&mut body).await.ok()?;
+        Message::from_vec(&body).ok()
+    }
+
+    /// Spawn `serve_tcp_connection` behind a real listener; return its address.
+    async fn tcp_server(router: Arc<QueryRouter>) -> SocketAddr {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            while let Ok((mut s, src)) = listener.accept().await {
+                let r = router.clone();
+                tokio::spawn(async move { serve_tcp_connection(&mut s, src, &r).await });
+            }
+        });
+        addr
+    }
+
+    #[tokio::test]
+    async fn test_tcp_pipelined_queries_are_all_answered_in_order() {
+        let addr = tcp_server(test_router().await).await;
+        let mut c = TcpStream::connect(addr).await.unwrap();
+        // glibc sends A and AAAA back to back on one connection; send five.
+        let qs: Vec<_> = (0..5u16).map(|i| query_wire(&format!("pipe{i}.example."), 100 + i)).collect();
+        c.write_all(&framed(&qs)).await.unwrap();
+        for i in 0..5u16 {
+            let r = read_framed(&mut c).await.unwrap_or_else(|| panic!("answer {i} missing"));
+            assert_eq!(r.metadata.id, 100 + i, "answers come back in order");
+            assert_eq!(r.answers.len(), 1);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_tcp_connection_serves_sequential_queries() {
+        let addr = tcp_server(test_router().await).await;
+        let mut c = TcpStream::connect(addr).await.unwrap();
+        for i in 0..3u16 {
+            c.write_all(&framed(&[query_wire("seq.example.", i)])).await.unwrap();
+            assert_eq!(read_framed(&mut c).await.expect("answer").metadata.id, i);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_tcp_response_packets_are_ignored() {
+        let addr = tcp_server(test_router().await).await;
+        let mut c = TcpStream::connect(addr).await.unwrap();
+        let mut resp = Message::from_vec(&query_wire("loop.example.", 7)).unwrap();
+        resp.metadata.message_type = MessageType::Response;
+        // A response, then a real query: only the query is answered.
+        c.write_all(&framed(&[resp.to_vec().unwrap(), query_wire("real.example.", 8)])).await.unwrap();
+        let r = read_framed(&mut c).await.expect("the real query is answered");
+        assert_eq!(r.metadata.id, 8, "nothing was sent back for the QR=1 packet");
+    }
+
+    #[tokio::test]
+    async fn test_udp_response_packets_are_ignored() {
+        let router = test_router().await;
+        let server = Arc::new(UdpSocket::bind("127.0.0.1:0").await.unwrap());
+        let client = UdpSocket::bind("127.0.0.1:0").await.unwrap();
+        let src = client.local_addr().unwrap();
+        let mut resp = Message::from_vec(&query_wire("loop.example.", 9)).unwrap();
+        resp.metadata.message_type = MessageType::Response;
+        process_udp_query(server.clone(), resp.to_vec().unwrap(), src, router.clone()).await.unwrap();
+        let mut buf = [0u8; 512];
+        let got = tokio::time::timeout(std::time::Duration::from_millis(300), client.recv_from(&mut buf)).await;
+        assert!(got.is_err(), "a QR=1 packet must get no reply");
+
+        // A normal query on the same path is still answered.
+        process_udp_query(server.clone(), query_wire("ok.example.", 10), src, router).await.unwrap();
+        let (n, _) = tokio::time::timeout(std::time::Duration::from_secs(3), client.recv_from(&mut buf))
+            .await
+            .expect("query answered")
+            .unwrap();
+        assert_eq!(Message::from_vec(&buf[..n]).unwrap().metadata.id, 10);
+    }
+
+    #[tokio::test]
+    async fn test_forwarded_answers_are_recursive_not_authoritative() {
+        // The fake upstream sets AA and leaves RA clear; as a forwarder we
+        // must report RA=1 and AA=0, also when the answer comes from cache.
+        let router = test_router().await;
+        let src: SocketAddr = "127.0.0.1:5353".parse().unwrap();
+        for pass in ["upstream", "cache"] {
+            let q = Message::from_vec(&query_wire("flags.example.", 11)).unwrap();
+            let QueryResult::Response(bytes) = router.route(q, src).await else { panic!("no response ({pass})") };
+            let r = Message::from_vec(&bytes).unwrap();
+            assert!(r.metadata.recursion_available, "RA must be set ({pass})");
+            assert!(!r.metadata.authoritative, "AA must be clear ({pass})");
+        }
     }
 
     // ── read_dns_message: length-prefixed TCP DNS read ──────────────────

@@ -115,6 +115,12 @@ pub struct DnsConfig {
     /// Maximum concurrent DNS queries (bounds listener task spawns)
     #[serde(default = "default_max_queries")]
     pub max_concurrent_queries: usize,
+
+    /// Maximum concurrent DNS queries from one client IP, so one device
+    /// (e.g. hammering a name whose servers never answer) cannot take every
+    /// slot in `max_concurrent_queries`.
+    #[serde(default = "default_max_queries_per_client")]
+    pub max_concurrent_per_client: usize,
 }
 
 /// Configuration for a DNS upstream server
@@ -518,7 +524,14 @@ fn default_blocking_ip() -> std::net::IpAddr {
 }
 
 fn default_max_queries() -> usize {
-    150
+    // Each in-flight query is one small tokio task; a query to a dead
+    // upstream holds its slot for the full upstream timeout (5s), so the cap
+    // must cover a whole LAN's queries over that window.
+    1024
+}
+
+fn default_max_queries_per_client() -> usize {
+    64
 }
 
 fn default_web_ports() -> Vec<String> {
@@ -803,6 +816,7 @@ impl Default for DnsConfig {
             interface: None,
             port: 53,
             max_concurrent_queries: default_max_queries(),
+            max_concurrent_per_client: default_max_queries_per_client(),
         }
     }
 }

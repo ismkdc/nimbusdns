@@ -4,7 +4,7 @@
 # Latest stable Rust with all system dependencies for building and debugging.
 # Everything stays inside the container — no host tooling needed.
 
-FROM docker.io/rust:1-bookworm
+FROM docker.io/rust:1-trixie
 
 # Install build deps and useful tools
 RUN apt-get update && apt-get install -y --no-install-recommends \
