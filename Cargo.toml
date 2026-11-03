@@ -8,14 +8,14 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.10"
+version = "0.5.11"
 edition = "2024"
 license = "MIT"
 authors = ["NimbusDNS contributors"]
 
 [workspace.dependencies]
 # -- Async runtime ------------------------------------------------------
-tokio = { version = "1.54.0", features = ["full"] }
+tokio = { version = "1.54.1", features = ["full"] }
 futures-util = "0.3.34"
 
 # -- DNS (hickory - formerly trust-dns) ---------------------------------
@@ -37,7 +37,7 @@ serde_json = "1.0.154"
 toml = "1.1.8"
 
 # -- Database -----------------------------------------------------------
-rusqlite = { version = "0.40.2", features = ["bundled", "vtab", "series"] }
+rusqlite = { version = "0.41.1", features = ["bundled", "vtab", "series"] }
 
 # -- Logging / Observability --------------------------------------------
 tracing = "0.1.44"
@@ -48,7 +48,7 @@ clap = { version = "4.6.7", features = ["derive", "env"] }
 
 # -- System -------------------------------------------------------------
 nix = { version = "0.31.3", features = ["fs", "signal", "net", "socket", "uio", "poll"] }
-signal-hook = "0.4.5"
+signal-hook = "0.4.6"
 signal-hook-tokio = { version = "0.4.0", features = ["futures-v0_3"] }
 libc = "0.2.191"
 
@@ -62,11 +62,11 @@ chrono = { version = "0.4.45", features = ["serde"] }
 sha2 = "0.11.1"
 argon2 = { version = "0.6.0", features = ["getrandom"] }
 password-hash = "0.6.1"
-uuid = { version = "1.28.0", features = ["v4", "serde"] }
+uuid = { version = "1.29.0", features = ["v4", "serde"] }
 
 # -- Data structures ----------------------------------------------------
 dashmap = "6.2.1"
-parking_lot = "0.12.5"
+parking_lot = "0.13.0"
 # -- Regex --------------------------------------------------------------
 regex = "1.13.1"
 
