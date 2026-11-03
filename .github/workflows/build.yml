@@ -115,7 +115,7 @@ jobs:
 
   # -- Build & push Docker image per arch (native, no QEMU) ------------
   docker:
-    needs: [test, build]
+    needs: [test]  # builds from the Dockerfile; does not use the binary artifacts
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
     strategy:
       fail-fast: false
