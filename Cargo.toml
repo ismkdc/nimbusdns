@@ -8,7 +8,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.5.12"
+version = "0.5.13"
 edition = "2024"
 license = "MIT"
 authors = ["NimbusDNS contributors"]
@@ -37,7 +37,7 @@ serde_json = "1.0.154"
 toml = "1.1.8"
 
 # -- Database -----------------------------------------------------------
-rusqlite = { version = "0.41.1", features = ["bundled", "vtab", "series"] }
+rusqlite = { version = "0.43", features = ["bundled", "vtab", "series"] }
 
 # -- Logging / Observability --------------------------------------------
 tracing = "0.1.44"
@@ -47,7 +47,7 @@ tracing-subscriber = { version = "0.3.23", features = ["json", "env-filter", "ti
 clap = { version = "4.6.7", features = ["derive", "env"] }
 
 # -- System -------------------------------------------------------------
-nix = { version = "0.31.3", features = ["fs", "signal", "net", "socket", "uio", "poll"] }
+nix = { version = "0.32", features = ["fs", "signal", "net", "socket", "uio", "poll"] }
 signal-hook = "0.4.6"
 signal-hook-tokio = { version = "0.4.0", features = ["futures-v0_3"] }
 libc = "0.2.191"
