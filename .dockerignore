@@ -1,0 +1,8 @@
+/.git
+/.github
+/target
+/docs
+/CLAUDE-*
+*.md
+.DS_Store
+._*
